@@ -12,16 +12,25 @@ object DatabaseFactory {
     fun init() {
         val driverClassName = "org.postgresql.Driver"
         
-        // On Render, we use the Environment Variables. Locally, we use the Supabase URL.
-        val jdbcUrl = System.getenv("JDBC_DATABASE_URL") 
-            ?: "jdbc:postgresql://aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
-            
-        val user = System.getenv("JDBC_DATABASE_USER") 
-            ?: "postgres.dzpkgschzppvjonksvww"
-            
-        val password = System.getenv("JDBC_DATABASE_PASSWORD") 
-            ?: "01ZA92YB34CD"
+        // 1. Get the URL from Render, or use the Supabase Pooler as default
+        var rawUrl = System.getenv("JDBC_DATABASE_URL") 
+            ?: "postgresql://postgres.dzpkgschzppvjonksvww:01ZA92YB34CD@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres"
+        
+        // 2. FORCE the "jdbc:postgresql://" prefix. The driver CRASHES without this.
+        val jdbcUrl = if (rawUrl.startsWith("jdbc:postgresql://")) {
+            rawUrl
+        } else if (rawUrl.startsWith("postgresql://")) {
+            rawUrl.replace("postgresql://", "jdbc:postgresql://")
+        } else {
+            "jdbc:postgresql://$rawUrl"
+        }
 
+        // 3. Get credentials from environment or use defaults
+        val user = System.getenv("JDBC_DATABASE_USER") ?: "postgres.dzpkgschzppvjonksvww"
+        val password = System.getenv("JDBC_DATABASE_PASSWORD") ?: "01ZA92YB34CD"
+
+        println("Connecting to database: $jdbcUrl")
+        
         val database = Database.connect(createHikariDataSource(jdbcUrl, driverClassName, user, password))
         
         transaction(database) {
@@ -43,10 +52,9 @@ object DatabaseFactory {
         isAutoCommit = false
         transactionIsolation = "TRANSACTION_REPEATABLE_READ"
         
-        // Supabase-specific requirements for Render
+        // Fix for Render -> Supabase connection
         addDataSourceProperty("ssl", "true")
         addDataSourceProperty("sslmode", "require")
-        addDataSourceProperty("tcpKeepAlive", "true")
         
         connectionTimeout = 30000
         validate()
