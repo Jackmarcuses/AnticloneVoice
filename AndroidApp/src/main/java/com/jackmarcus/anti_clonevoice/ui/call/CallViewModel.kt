@@ -1,17 +1,17 @@
 package com.jackmarcus.anti_clonevoice.ui.call
 
 import android.content.Context
+import android.content.Intent
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.models.SignalingMessage
+import com.jackmarcus.anti_clonevoice.webrtc.CallService
 import com.jackmarcus.anti_clonevoice.webrtc.SignalingClient
 import com.jackmarcus.anti_clonevoice.webrtc.WebRtcClient
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
 import org.webrtc.PeerConnection
@@ -33,7 +33,11 @@ class CallViewModel(
 
     private val _remoteUserId = MutableStateFlow<String?>(null)
     val remoteUserId: StateFlow<String?> = _remoteUserId.asStateFlow()
+    
+    private val _isMuted = MutableStateFlow(false)
+    val isMuted = _isMuted.asStateFlow()
 
+    private val callAudioManager = CallAudioManager(context)
     private var webRtcClient: WebRtcClient? = null
     private val myUserId = secureStorage.getUserId() ?: ""
     private var isCaller = false
@@ -60,11 +64,14 @@ class CallViewModel(
                 if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING) {
                     _remoteUserId.value = message.senderId
                     _callState.value = CallState.RINGING
+                    callAudioManager.startRinging()
+                    startCallService()
                     webRtcClient = WebRtcClient(context, this)
                     webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.OFFER, message.data))
                 }
             }
             "answer" -> {
+                callAudioManager.stopAll()
                 webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.ANSWER, message.data))
                 _callState.value = CallState.CONNECTED
             }
@@ -78,14 +85,25 @@ class CallViewModel(
             "call_request" -> {
                  _remoteUserId.value = message.senderId
                  _callState.value = CallState.RINGING
+                 callAudioManager.startRinging()
+                 startCallService()
             }
             "call_response" -> {
                 if (message.data == "accepted") {
+                    callAudioManager.stopAll()
                     _callState.value = CallState.DIALING
                     webRtcClient?.startCall()
                 } else {
+                    stopCallService()
+                    callAudioManager.stopAll()
                     _callState.value = CallState.ENDED
                 }
+            }
+            "end_call" -> {
+                stopCallService()
+                callAudioManager.stopAll()
+                webRtcClient?.close()
+                _callState.value = CallState.ENDED
             }
             "ice_restart" -> {
                 Log.i(TAG, "Remote requested ICE restart")
@@ -98,29 +116,57 @@ class CallViewModel(
         isCaller = true
         _remoteUserId.value = receiverId
         _callState.value = CallState.DIALING
+        callAudioManager.startDialing()
+        startCallService()
         signalingClient.sendMessage(SignalingMessage("call_request", myUserId, receiverId))
         webRtcClient = WebRtcClient(context, this)
     }
 
     fun acceptCall() {
         isCaller = false
+        callAudioManager.stopAll()
         val receiverId = _remoteUserId.value ?: return
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "accepted"))
-        // We will create the WebRtcClient when we receive the 'offer' from the caller
-        _callState.value = CallState.DIALING // Or a new state like WAITING_FOR_CONNECT
+        _callState.value = CallState.DIALING
     }
 
     fun rejectCall() {
         val receiverId = _remoteUserId.value ?: return
+        stopCallService()
+        callAudioManager.stopAll()
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "rejected"))
         _callState.value = CallState.ENDED
     }
 
     fun endCall() {
         val receiverId = _remoteUserId.value ?: return
+        stopCallService()
+        callAudioManager.stopAll()
         signalingClient.sendMessage(SignalingMessage("end_call", myUserId, receiverId))
         webRtcClient?.close()
         _callState.value = CallState.ENDED
+    }
+
+    fun toggleMute() {
+        val muted = !_isMuted.value
+        _isMuted.value = muted
+        webRtcClient?.setMute(muted)
+    }
+
+    private fun startCallService() {
+        val intent = Intent(context, CallService::class.java)
+        ContextCompat.startForegroundService(context, intent)
+    }
+
+    private fun stopCallService() {
+        val intent = Intent(context, CallService::class.java).apply {
+            action = CallService.ACTION_STOP
+        }
+        context.stopService(intent)
+    }
+
+    override fun onCleared() {
+        callAudioManager.stopAll()
     }
 
     override fun onIceCandidate(candidate: IceCandidate) {
@@ -139,6 +185,7 @@ class CallViewModel(
         viewModelScope.launch {
             when (state) {
                 PeerConnection.IceConnectionState.CONNECTED -> {
+                    callAudioManager.stopAll()
                     _callState.value = CallState.CONNECTED
                     retryCount = 0
                 }

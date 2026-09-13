@@ -18,8 +18,8 @@ val userSessions = ConcurrentHashMap<String, WebSocketServerSession>()
 
 fun Application.configureSockets() {
     install(WebSockets) {
-        pingPeriod = Duration.ofSeconds(15)
-        timeout = Duration.ofSeconds(15)
+        pingPeriod = Duration.ofSeconds(5) // Reduced ping period for faster detection
+        timeout = Duration.ofSeconds(10)
         maxFrameSize = Long.MAX_VALUE
         masking = false
         contentConverter = KotlinxWebsocketSerializationConverter(Json)

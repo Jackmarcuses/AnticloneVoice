@@ -53,7 +53,8 @@ class ContactsViewModel(
                             contact
                         }
                     }
-                    state.copy(contacts = updatedContacts)
+                    // Sort online contacts to the top for a better UX
+                    state.copy(contacts = updatedContacts.sortedByDescending { it.isOnline })
                 }
             }
         }

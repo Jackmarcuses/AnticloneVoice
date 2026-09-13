@@ -31,6 +31,8 @@ class WebRtcClient(
 
     private var statsTimer: Timer? = null
 
+    private var localAudioTrack: AudioTrack? = null
+
     init {
         initPeerConnectionFactory(context)
     }
@@ -127,8 +129,8 @@ class WebRtcClient(
         startStatsMonitoring()
         val mediaStream = peerConnectionFactory.createLocalMediaStream("ARDAMS")
         val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
-        val audioTrack = peerConnectionFactory.createAudioTrack("ARDAMSa0", audioSource)
-        mediaStream.addTrack(audioTrack)
+        localAudioTrack = peerConnectionFactory.createAudioTrack("ARDAMSa0", audioSource)
+        localAudioTrack?.let { mediaStream.addTrack(it) }
         peerConnection?.addStream(mediaStream)
 
         peerConnection?.createOffer(object : SdpObserver {
@@ -169,8 +171,8 @@ class WebRtcClient(
         }
         val mediaStream = peerConnectionFactory.createLocalMediaStream("ARDAMS")
         val audioSource = peerConnectionFactory.createAudioSource(MediaConstraints())
-        val audioTrack = peerConnectionFactory.createAudioTrack("ARDAMSa0", audioSource)
-        mediaStream.addTrack(audioTrack)
+        localAudioTrack = peerConnectionFactory.createAudioTrack("ARDAMSa0", audioSource)
+        localAudioTrack?.let { mediaStream.addTrack(it) }
         peerConnection?.addStream(mediaStream)
 
         peerConnection?.createAnswer(object : SdpObserver {
@@ -190,5 +192,9 @@ class WebRtcClient(
         statsTimer = null
         peerConnection?.close()
         peerConnection = null
+    }
+
+    fun setMute(isMuted: Boolean) {
+        localAudioTrack?.setEnabled(!isMuted)
     }
 }

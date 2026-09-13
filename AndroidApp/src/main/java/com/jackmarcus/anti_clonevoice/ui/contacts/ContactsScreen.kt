@@ -1,5 +1,6 @@
 package com.jackmarcus.anti_clonevoice.ui.contacts
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -29,20 +30,29 @@ fun ContactsScreen(
 
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("Contacts") },
+            CenterAlignedTopAppBar(
+                title = { Text("Anti-Clone Voice", style = MaterialTheme.typography.titleLarge) },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ),
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {
                         Icon(Icons.Default.Add, contentDescription = "Add Contact")
+                    }
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(Icons.Default.Person, contentDescription = "Profile")
                     }
                 }
             )
         }
     ) { padding ->
-        Box(modifier = Modifier.padding(padding).fillMaxSize()) {
-            if (uiState.isLoading) {
+        Box(modifier = Modifier
+            .padding(padding)
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)) {
+            if (uiState.isLoading && uiState.contacts.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (uiState.error != null) {
+            } else if (uiState.error != null && uiState.contacts.isEmpty()) {
                 Text(
                     text = uiState.error ?: "Unknown error",
                     color = MaterialTheme.colorScheme.error,
@@ -50,6 +60,14 @@ fun ContactsScreen(
                 )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    item {
+                        Text(
+                            "My Contacts",
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(16.dp),
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     items(uiState.contacts) { contact ->
                         ContactItem(
                             contact = contact,
