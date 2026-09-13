@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "68309335150",
+    "project_id": "anti-voice-clone",
+    "storage_bucket": "anti-voice-clone.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:68309335150:android:99b42511717ebee789fa7f",
+        "android_client_info": {
+          "package_name": "com.jackmarcus.anti_clonevoice"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "68309335150-3cmp2r9j3li5689hv1vtv6keb6mfvbh4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.jackmarcus.anti_clonevoice",
+            "certificate_hash": "c7216bab48f8a970f03023e38b31d23486b3bb6f"
+          }
+        },
+        {
+          "client_id": "68309335150-lbv7sd72i72v8r2bermu7nl725j8cgcn.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDx14Y2ClivGvcsjmQq8LcghTaOAzWIuO8"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "68309335150-lbv7sd72i72v8r2bermu7nl725j8cgcn.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

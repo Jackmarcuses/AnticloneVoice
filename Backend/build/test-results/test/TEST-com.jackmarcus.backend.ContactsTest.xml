@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jackmarcus.backend.ContactsTest" tests="3" skipped="0" failures="0" errors="0" timestamp="2026-09-13T06:59:42.434Z" hostname="LAPTOP-730UICUF" time="0.179">
+  <properties/>
+  <testcase name="testPresenceBroadcast" classname="com.jackmarcus.backend.ContactsTest" time="0.002"/>
+  <testcase name="testContactManagement" classname="com.jackmarcus.backend.ContactsTest" time="0.082"/>
+  <testcase name="testSignalingRouting" classname="com.jackmarcus.backend.ContactsTest" time="0.094"/>
+  <system-out><![CDATA[12:29:42.436 [Test worker] INFO ktor.test -- No ktor.deployment.watch patterns specified, automatic reload is not active.
+12:29:42.436 [Test worker] INFO ktor.test -- Application started in 0.0 seconds.
+12:29:42.437 [DefaultDispatcher-worker-3 @coroutine#32] INFO ktor.test -- Responding at http://localhost:80
+12:29:42.437 [DefaultDispatcher-worker-3 @coroutine#32] INFO ktor.test -- Responding at https://localhost:443
+12:29:42.445 [DefaultDispatcher-worker-3 @call-context#36] INFO ktor.test -- No ktor.deployment.watch patterns specified, automatic reload is not active.
+12:29:42.447 [DefaultDispatcher-worker-3 @call-context#36] INFO ktor.test -- Application started in 0.003 seconds.
+12:29:42.448 [DefaultDispatcher-worker-4 @coroutine#38] INFO ktor.test -- Responding at http://localhost:80
+12:29:42.448 [DefaultDispatcher-worker-4 @coroutine#38] INFO ktor.test -- Responding at https://localhost:443
+12:29:42.549 [DefaultDispatcher-worker-4 @call-context#59] INFO ktor.test -- No ktor.deployment.watch patterns specified, automatic reload is not active.
+12:29:42.552 [DefaultDispatcher-worker-4 @call-context#59] INFO ktor.test -- Application started in 0.003 seconds.
+12:29:42.553 [DefaultDispatcher-worker-1 @coroutine#61] INFO ktor.test -- Responding at http://localhost:80
+12:29:42.553 [DefaultDispatcher-worker-1 @coroutine#61] INFO ktor.test -- Responding at https://localhost:443
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

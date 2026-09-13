@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.jackmarcus.backend.ApplicationTest" tests="2" skipped="0" failures="0" errors="0" timestamp="2026-09-13T06:59:40.845Z" hostname="LAPTOP-730UICUF" time="1.586">
+  <properties/>
+  <testcase name="testLogin" classname="com.jackmarcus.backend.ApplicationTest" time="1.502"/>
+  <testcase name="testSignup" classname="com.jackmarcus.backend.ApplicationTest" time="0.08"/>
+  <system-out><![CDATA[12:29:41.233 [DefaultDispatcher-worker-1 @call-context#2] INFO ktor.test -- No ktor.deployment.watch patterns specified, automatic reload is not active.
+Firebase Admin SDK initialized successfully using C:\Users\Sohel Sheikh\Downloads\Anti-clone voice\Anticlonevoice\Backend\service-account.json.json
+12:29:41.756 [DefaultDispatcher-worker-1 @call-context#2] INFO ktor.test -- Application started in 0.537 seconds.
+12:29:41.760 [DefaultDispatcher-worker-3 @coroutine#4] INFO ktor.test -- Responding at http://localhost:80
+12:29:41.760 [DefaultDispatcher-worker-3 @coroutine#4] INFO ktor.test -- Responding at https://localhost:443
+SIMULATED EMAIL to login@example.com: Your OTP is 576478
+12:29:42.355 [DefaultDispatcher-worker-6 @call-context#19] INFO ktor.test -- No ktor.deployment.watch patterns specified, automatic reload is not active.
+12:29:42.359 [DefaultDispatcher-worker-6 @call-context#19] INFO ktor.test -- Application started in 0.004 seconds.
+12:29:42.360 [DefaultDispatcher-worker-2 @coroutine#21] INFO ktor.test -- Responding at http://localhost:80
+12:29:42.360 [DefaultDispatcher-worker-2 @coroutine#21] INFO ktor.test -- Responding at https://localhost:443
+SIMULATED EMAIL to test@example.com: Your OTP is 462263
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
