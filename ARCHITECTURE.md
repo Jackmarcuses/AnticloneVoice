@@ -6,7 +6,24 @@
 2. **Backend (REST/gRPC)**: Handles authentication, user presence, and signaling for WebRTC. Located in `Backend/`.
 3. **VoiceSecuritySDK**: A specialized library for real-time deepfake voice detection and anti-cloning verification. Located in `VoiceSecuritySDK/`.
 4. **Signaling Server**: Facilitates WebRTC handshakes (SDP exchange, ICE candidates) between peers.
-5. **STUN/TURN Servers**: Necessary for P2P connectivity through NAT/Firewalls to ensure high call success rates.
+5. **STUN/TURN Servers**: Necessary for P2P connectivity through NAT/Firewalls.
+    - **STUN**: Used to discover public IP/Port. (Using Google free STUN).
+    - **TURN**: Used when direct P2P or STUN fail. Relay traffic through the server.
+    - **Strategy**: UDP -> TCP -> TLS (fallback) to ensure connectivity behind strict firewalls.
+
+## TURN Server Configuration (coturn)
+To ensure connectivity across all networks, a `coturn` server should be deployed.
+- **Ports**: 3478 (UDP/TCP), 5349 (TLS).
+- **Authentication**: Long-term credentials or REST API auth.
+- **Config Example**:
+  ```conf
+  listening-port=3478
+  tls-listening-port=5349
+  realm=yourdomain.com
+  user=username:password
+  fingerprint
+  lt-cred-mech
+  ```
 
 ## Mermaid Diagram
 ```mermaid

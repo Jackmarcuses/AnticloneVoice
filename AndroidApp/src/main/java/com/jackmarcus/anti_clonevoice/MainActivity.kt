@@ -1,17 +1,19 @@
 package com.jackmarcus.anti_clonevoice
 
+import android.Manifest
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -25,6 +27,7 @@ import com.jackmarcus.anti_clonevoice.ui.auth.AuthViewModel
 import com.jackmarcus.anti_clonevoice.ui.auth.LoginScreen
 import com.jackmarcus.anti_clonevoice.ui.auth.SignupScreen
 import com.jackmarcus.anti_clonevoice.ui.call.CallScreen
+import com.jackmarcus.anti_clonevoice.ui.call.CallState
 import com.jackmarcus.anti_clonevoice.ui.call.CallViewModel
 import com.jackmarcus.anti_clonevoice.ui.contacts.ContactsScreen
 import com.jackmarcus.anti_clonevoice.ui.contacts.ContactsViewModel
@@ -66,8 +69,40 @@ fun MainApp(
     callViewModel: CallViewModel
 ) {
     val navController = rememberNavController()
+    val context = LocalContext.current
+    
+    // Permission Handling
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        val allGranted = permissions.values.all { it }
+        if (!allGranted) {
+            Toast.makeText(context, "Microphone permission is required for calls", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        permissionLauncher.launch(
+            arrayOf(
+                Manifest.permission.RECORD_AUDIO,
+                Manifest.permission.MODIFY_AUDIO_SETTINGS
+            )
+        )
+    }
+
     // Trigger recomposition if auth state changes
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
+    val callState by callViewModel.callState.collectAsStateWithLifecycle()
+    
+    // Auto-navigate to call screen for incoming calls or when dialing
+    LaunchedEffect(callState) {
+        if (callState == CallState.RINGING || callState == CallState.DIALING) {
+            // Check if we are already on the call screen to avoid duplicate navigation
+            if (navController.currentBackStackEntry?.destination?.route != "call") {
+                navController.navigate("call")
+            }
+        }
+    }
     
     // Only navigate to login if we were previously logged in and now we are not.
     // startDestination handles the initial launch correctly.

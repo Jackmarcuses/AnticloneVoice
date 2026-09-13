@@ -1,6 +1,7 @@
 package com.jackmarcus.anti_clonevoice.ui.call
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
@@ -10,12 +11,14 @@ import com.jackmarcus.anti_clonevoice.webrtc.WebRtcClient
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
+import org.webrtc.PeerConnection
 import org.webrtc.SessionDescription
 
 enum class CallState {
-    IDLE, DIALING, RINGING, CONNECTED, ENDED
+    IDLE, DIALING, RINGING, CONNECTED, ENDED, FAILED
 }
 
 class CallViewModel(
@@ -24,6 +27,7 @@ class CallViewModel(
     private val secureStorage: SecureStorage
 ) : ViewModel(), WebRtcClient.WebRtcObserver {
 
+    private val TAG = "CallViewModel"
     private val _callState = MutableStateFlow(CallState.IDLE)
     val callState: StateFlow<CallState> = _callState.asStateFlow()
 
@@ -32,6 +36,9 @@ class CallViewModel(
 
     private var webRtcClient: WebRtcClient? = null
     private val myUserId = secureStorage.getUserId() ?: ""
+    private var isCaller = false
+    private var retryCount = 0
+    private val MAX_RETRIES = 2
 
     init {
         viewModelScope.launch {
@@ -50,10 +57,12 @@ class CallViewModel(
     private fun handleSignalingMessage(message: SignalingMessage) {
         when (message.type) {
             "offer" -> {
-                _remoteUserId.value = message.senderId
-                _callState.value = CallState.RINGING
-                webRtcClient = WebRtcClient(context, this)
-                webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.OFFER, message.data))
+                if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING) {
+                    _remoteUserId.value = message.senderId
+                    _callState.value = CallState.RINGING
+                    webRtcClient = WebRtcClient(context, this)
+                    webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.OFFER, message.data))
+                }
             }
             "answer" -> {
                 webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.ANSWER, message.data))
@@ -78,10 +87,15 @@ class CallViewModel(
                     _callState.value = CallState.ENDED
                 }
             }
+            "ice_restart" -> {
+                Log.i(TAG, "Remote requested ICE restart")
+                webRtcClient?.restartIce()
+            }
         }
     }
 
     fun startCall(receiverId: String) {
+        isCaller = true
         _remoteUserId.value = receiverId
         _callState.value = CallState.DIALING
         signalingClient.sendMessage(SignalingMessage("call_request", myUserId, receiverId))
@@ -89,10 +103,11 @@ class CallViewModel(
     }
 
     fun acceptCall() {
+        isCaller = false
         val receiverId = _remoteUserId.value ?: return
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "accepted"))
-        webRtcClient?.answerCall()
-        _callState.value = CallState.CONNECTED
+        // We will create the WebRtcClient when we receive the 'offer' from the caller
+        _callState.value = CallState.DIALING // Or a new state like WAITING_FOR_CONNECT
     }
 
     fun rejectCall() {
@@ -118,5 +133,30 @@ class CallViewModel(
         val receiverId = _remoteUserId.value ?: return
         val type = sessionDescription.type.canonicalForm()
         signalingClient.sendMessage(SignalingMessage(type, myUserId, receiverId, sessionDescription.description))
+    }
+
+    override fun onConnectionStateChange(state: PeerConnection.IceConnectionState) {
+        viewModelScope.launch {
+            when (state) {
+                PeerConnection.IceConnectionState.CONNECTED -> {
+                    _callState.value = CallState.CONNECTED
+                    retryCount = 0
+                }
+                PeerConnection.IceConnectionState.FAILED, PeerConnection.IceConnectionState.DISCONNECTED -> {
+                    if (retryCount < MAX_RETRIES) {
+                        retryCount++
+                        Log.w(TAG, "Connection lost. Retry attempt $retryCount")
+                        val receiverId = _remoteUserId.value ?: return@launch
+                        if (isCaller) {
+                            signalingClient.sendMessage(SignalingMessage("ice_restart", myUserId, receiverId))
+                            webRtcClient?.restartIce()
+                        }
+                    } else {
+                        _callState.value = CallState.FAILED
+                    }
+                }
+                else -> {}
+            }
+        }
     }
 }

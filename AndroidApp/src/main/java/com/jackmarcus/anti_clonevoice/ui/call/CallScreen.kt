@@ -6,6 +6,7 @@ import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -21,8 +22,11 @@ fun CallScreen(
     val callState by viewModel.callState.collectAsState()
     val remoteUserId by viewModel.remoteUserId.collectAsState()
 
-    if (callState == CallState.ENDED) {
-        onCallEnded()
+    // Handle call termination
+    if (callState == CallState.ENDED || callState == CallState.FAILED) {
+        LaunchedEffect(Unit) {
+            onCallEnded()
+        }
     }
 
     Column(
@@ -36,9 +40,19 @@ fun CallScreen(
         )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = callState.name,
+            text = when(callState) {
+                CallState.DIALING -> "Dialing..."
+                CallState.RINGING -> "Incoming Call..."
+                CallState.CONNECTED -> "Connected"
+                CallState.FAILED -> "Call Failed"
+                else -> callState.name
+            },
             style = MaterialTheme.typography.bodyLarge,
-            color = if (callState == CallState.CONNECTED) Color.Green else Color.Gray
+            color = when(callState) {
+                CallState.CONNECTED -> Color.Green
+                CallState.FAILED -> Color.Red
+                else -> Color.Gray
+            }
         )
 
         Spacer(modifier = Modifier.height(64.dp))
