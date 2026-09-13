@@ -15,6 +15,10 @@ import kotlin.random.Random
 
 fun Application.configureRouting() {
     routing {
+        get("/") {
+            call.respondText("Anti-Clone Voice Backend is Live!")
+        }
+
         post("/api/v1/auth/send-otp") {
             val email = call.parameters["email"] ?: return@post call.respond(HttpStatusCode.BadRequest, "Email required")
             val code = (100000..999999).random().toString()
