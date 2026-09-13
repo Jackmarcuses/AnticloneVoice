@@ -10,7 +10,11 @@ import org.slf4j.LoggerFactory
 fun main() {
     val logger = LoggerFactory.getLogger("Application")
     logger.info("Starting backend server...")
-    embeddedServer(Netty, port = 8081, host = "0.0.0.0", module = Application::module)
+    
+    // Render provides a PORT environment variable. If it's missing, use 8081.
+    val port = System.getenv("PORT")?.toInt() ?: 8081
+    
+    embeddedServer(Netty, port = port, host = "0.0.0.0", module = Application::module)
         .start(wait = true)
 }
 
