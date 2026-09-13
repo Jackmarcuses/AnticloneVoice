@@ -1,5 +1,6 @@
 package com.jackmarcus.anti_clonevoice.data.remote
 
+import android.util.Log
 import com.jackmarcus.anti_clonevoice.data.Config
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.models.PresenceUpdate
@@ -16,6 +17,7 @@ class PresenceManager(
     private val okHttpClient: OkHttpClient
 ) {
     private var webSocket: WebSocket? = null
+    private val TAG = "PresenceManager"
     
     private val _presenceUpdates = MutableSharedFlow<PresenceUpdate>(
         extraBufferCapacity = 10,
@@ -25,26 +27,34 @@ class PresenceManager(
 
     fun connect() {
         val userId = secureStorage.getUserId() ?: return
+        val url = "${Config.WS_URL}/presence/$userId"
+        Log.d(TAG, "Connecting to presence WS: $url")
+        
         val request = Request.Builder()
-            .url("${Config.WS_URL}/presence/$userId")
+            .url(url)
             .build()
         
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.i(TAG, "Presence WebSocket Opened")
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
+                    Log.d(TAG, "Presence Update Received: $text")
                     val update = Json.decodeFromString<PresenceUpdate>(text)
                     _presenceUpdates.tryEmit(update)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e(TAG, "Error parsing presence: ${e.message}")
                 }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                // Reconnect logic could be here
+                Log.w(TAG, "Presence WebSocket Closed: $reason")
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                t.printStackTrace()
+                Log.e(TAG, "Presence WebSocket Failure: ${t.message}")
             }
         })
     }

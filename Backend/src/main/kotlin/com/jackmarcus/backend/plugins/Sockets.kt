@@ -32,8 +32,16 @@ fun Application.configureSockets() {
             userSessions[userId] = this
             UserDatabase.setUserOnline(userId)
             
-            // Broadcast "online" to contacts
+            // 1. Tell all my friends I am now online
             broadcastPresence(userId, "online")
+            
+            // 2. IMMEDIATELY tell ME which of my friends are already online
+            val myContacts = UserDatabase.getContacts(userId)
+            myContacts.forEach { contact ->
+                if (UserDatabase.isOnline(contact.id)) {
+                    send(Frame.Text(Json.encodeToString(PresenceUpdate(contact.id, "online"))))
+                }
+            }
             
             try {
                 for (frame in incoming) {

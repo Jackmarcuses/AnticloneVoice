@@ -69,10 +69,15 @@ fun MainApp(
     // Trigger recomposition if auth state changes
     val authState by authViewModel.authState.collectAsStateWithLifecycle()
     
+    // Only navigate to login if we were previously logged in and now we are not.
+    // startDestination handles the initial launch correctly.
     LaunchedEffect(authState) {
-        if (authState is AuthViewModel.AuthState.Idle) {
-            navController.navigate("login") {
-                popUpTo(0)
+        if (authState is AuthViewModel.AuthState.Idle && !authViewModel.isLoggedIn()) {
+            val currentRoute = navController.currentBackStackEntry?.destination?.route
+            if (currentRoute != "login" && currentRoute != "signup") {
+                navController.navigate("login") {
+                    popUpTo(0)
+                }
             }
         }
     }
