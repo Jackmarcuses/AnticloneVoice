@@ -1,5 +1,6 @@
 package com.jackmarcus.anti_clonevoice.webrtc
 
+import android.util.Log
 import com.jackmarcus.anti_clonevoice.data.Config
 import com.jackmarcus.anti_clonevoice.data.remote.models.SignalingMessage
 import kotlinx.coroutines.channels.BufferOverflow
@@ -14,6 +15,7 @@ class SignalingClient(
     private val okHttpClient: OkHttpClient
 ) {
     private var webSocket: WebSocket? = null
+    private val TAG = "SignalingClient"
     
     private val _signalingMessages = MutableSharedFlow<SignalingMessage>(
         extraBufferCapacity = 10,
@@ -22,32 +24,41 @@ class SignalingClient(
     val signalingMessages: SharedFlow<SignalingMessage> = _signalingMessages.asSharedFlow()
 
     fun connect(userId: String) {
+        val url = "${Config.WS_URL}/api/v1/call/signal/$userId"
+        Log.d(TAG, "Connecting to signaling WS: $url")
+        
         val request = Request.Builder()
-            .url("${Config.WS_URL}/api/v1/call/signal/$userId")
+            .url(url)
             .build()
         
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.i(TAG, "Signaling WebSocket Opened")
+            }
+
             override fun onMessage(webSocket: WebSocket, text: String) {
                 try {
+                    Log.d(TAG, "Signaling Message Received: $text")
                     val message = Json.decodeFromString<SignalingMessage>(text)
                     _signalingMessages.tryEmit(message)
                 } catch (e: Exception) {
-                    e.printStackTrace()
+                    Log.e(TAG, "Error parsing signaling message: ${e.message}")
                 }
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
-                // Handle close
+                Log.w(TAG, "Signaling WebSocket Closed: $reason")
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
-                t.printStackTrace()
+                Log.e(TAG, "Signaling WebSocket Failure: ${t.message}")
             }
         })
     }
 
     fun sendMessage(message: SignalingMessage) {
         val text = Json.encodeToString(message)
+        Log.d(TAG, "Sending Signaling Message: $text")
         webSocket?.send(text)
     }
 

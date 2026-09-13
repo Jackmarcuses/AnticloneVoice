@@ -46,8 +46,18 @@ class WebRtcClient(
     }
 
     private fun buildPeerConnectionFactory(): PeerConnectionFactory {
+        val audioDeviceModule = try {
+            JavaAudioDeviceModule.builder(context)
+                .setUseHardwareAcousticEchoCanceler(false) // Better for emulators
+                .setUseHardwareNoiseSuppressor(false)      // Better for emulators
+                .createAudioDeviceModule()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to create AudioDeviceModule: ${e.message}")
+            JavaAudioDeviceModule.builder(context).createAudioDeviceModule()
+        }
+
         return PeerConnectionFactory.builder()
-            .setAudioDeviceModule(JavaAudioDeviceModule.builder(context).createAudioDeviceModule())
+            .setAudioDeviceModule(audioDeviceModule)
             .setOptions(PeerConnectionFactory.Options())
             .createPeerConnectionFactory()
     }
