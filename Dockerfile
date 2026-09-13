@@ -1,5 +1,5 @@
 # Stage 1: Build the project
-FROM eclipse-temurin:17-jdk AS build
+FROM eclipse-temurin:11-jdk AS build
 WORKDIR /home/gradle/src
 COPY . .
 
@@ -10,7 +10,7 @@ RUN chmod +x ./gradlew
 RUN ./gradlew :Backend:installDist --no-daemon
 
 # Stage 2: Runtime
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:11-jre
 EXPOSE 8081
 WORKDIR /app
 
