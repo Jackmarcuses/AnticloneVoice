@@ -3,12 +3,12 @@ package com.jackmarcus.anti_clonevoice.ui.call
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MicOff
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -17,9 +17,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -33,8 +33,8 @@ fun CallScreen(
     val isMuted by viewModel.isMuted.collectAsState()
 
     // Handle call termination
-    if (callState == CallState.ENDED || callState == CallState.FAILED) {
-        LaunchedEffect(Unit) {
+    LaunchedEffect(callState) {
+        if (callState == CallState.ENDED || callState == CallState.FAILED) {
             onCallEnded()
         }
     }
@@ -42,89 +42,83 @@ fun CallScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(
-                brush = Brush.verticalGradient(
-                    colors = listOf(Color(0xFF1C1C1C), Color(0xFF0A0A0A))
-                )
-            )
+            .background(Color(0xFF075E54)) // WhatsApp Dark Green
     ) {
-        // Top Info
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 100.dp),
+                .fillMaxSize()
+                .padding(top = 80.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                modifier = Modifier
-                    .size(120.dp)
-                    .clip(CircleShape)
-                    .background(Color.DarkGray),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    Icons.Default.Person,
-                    contentDescription = null,
-                    modifier = Modifier.size(80.dp),
-                    tint = Color.LightGray
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
             Text(
-                text = remoteUserId ?: "Unknown",
-                color = Color.White,
-                fontSize = 28.sp,
-                style = MaterialTheme.typography.headlineMedium
+                text = "Anti-Clone Voice",
+                color = Color.White.copy(alpha = 0.7f),
+                style = MaterialTheme.typography.labelLarge
             )
             
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(32.dp))
+            
+            Text(
+                text = remoteUserId ?: "Contact",
+                color = Color.White,
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
             
             Text(
                 text = when(callState) {
                     CallState.DIALING -> "Calling..."
                     CallState.RINGING -> "Incoming Call..."
-                    CallState.CONNECTED -> "00:00" // Time logic can be added
+                    CallState.CONNECTED -> "00:00"
                     CallState.FAILED -> "Call Failed"
                     else -> ""
                 },
-                color = if (callState == CallState.CONNECTED) Color.Green else Color.Gray,
+                color = Color.White.copy(alpha = 0.9f),
                 fontSize = 18.sp
             )
-        }
 
-        // Bottom Controls
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .align(Alignment.BottomCenter)
-                .padding(bottom = 80.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            CallControlButton(
-                icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
-                backgroundColor = if (isMuted) Color.White.copy(alpha = 0.2f) else Color.Transparent,
-                contentColor = Color.White,
-                onClick = { viewModel.toggleMute() }
-            )
+            Spacer(modifier = Modifier.weight(1f))
 
-            if (callState == CallState.RINGING) {
-                CallControlButton(
-                    icon = Icons.Default.Call,
-                    backgroundColor = Color.Green,
-                    contentColor = Color.White,
-                    onClick = { viewModel.acceptCall() }
-                )
+            // Controls Row
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp)),
+                color = Color(0xFF121B22) // WhatsApp Background Dark
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 48.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CallControlButton(
+                        icon = if (isMuted) Icons.Default.MicOff else Icons.Default.Mic,
+                        backgroundColor = if (isMuted) Color.White.copy(alpha = 0.1f) else Color.Transparent,
+                        contentColor = Color.White,
+                        onClick = { viewModel.toggleMute() }
+                    )
+
+                    if (callState == CallState.RINGING) {
+                        CallControlButton(
+                            icon = Icons.Default.Call,
+                            backgroundColor = Color(0xFF25D366), // WhatsApp Light Green
+                            contentColor = Color.White,
+                            onClick = { viewModel.acceptCall() }
+                        )
+                    }
+
+                    CallControlButton(
+                        icon = Icons.Default.CallEnd,
+                        backgroundColor = Color(0xFFEA0038), // WhatsApp Red
+                        contentColor = Color.White,
+                        onClick = { viewModel.endCall() }
+                    )
+                }
             }
-
-            CallControlButton(
-                icon = Icons.Default.CallEnd,
-                backgroundColor = Color.Red,
-                contentColor = Color.White,
-                onClick = { viewModel.endCall() }
-            )
         }
     }
 }

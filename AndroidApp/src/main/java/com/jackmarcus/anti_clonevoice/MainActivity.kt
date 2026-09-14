@@ -52,18 +52,36 @@ import android.provider.Settings
 import android.net.Uri
 import android.content.Intent
 
+import android.util.Log
+
 class MainActivity : ComponentActivity() {
+    private val TAG = "MainActivity"
+    private lateinit var callViewModel: CallViewModel
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Add Global Crash Handler to help debug POCO crashes
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            Log.e("CRITICAL_CRASH", "Crash in thread ${thread.name}: ${throwable.message}")
+            throwable.printStackTrace()
+            // You can also Toast here if you want to see it on screen
+        }
+
         enableEdgeToEdge()
 
         // Check for "Display over other apps" permission (Required for Xiaomi/POCO bg calls)
         if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-            startActivity(intent)
+            try {
+                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+                startActivity(intent)
+                Toast.makeText(this, "Please enable 'Display over other apps' for Anti-Clone Voice", Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to open overlay settings: ${e.message}")
+            }
         }
 
-        // Manual Dependency Injection for now
+        // Manual Dependency Injection with Error Handling
         val secureStorage = SecureStorage(applicationContext)
         val authRepository = AuthRepository(NetworkClient.authService, secureStorage)
         val authViewModel = AuthViewModel(authRepository)
@@ -74,20 +92,32 @@ class MainActivity : ComponentActivity() {
         
         val okHttpClient = OkHttpClient()
         val signalingClient = SignalingClient(okHttpClient)
-        val callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage)
+        callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage)
         
         val chatRepository = ChatRepository(NetworkClient.chatService, secureStorage, okHttpClient)
         val chatViewModel = ChatViewModel(chatRepository, secureStorage)
 
-        // Handle Intent for answering from notification
-        if (intent?.action == "ANSWER_CALL") {
-            callViewModel.acceptCall()
-        }
+        handleIntent(intent, callViewModel)
 
         setContent {
             AnticloneVoiceTheme {
                 MainApp(authViewModel, contactsViewModel, callViewModel, chatViewModel)
             }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (::callViewModel.isInitialized) {
+            handleIntent(intent, callViewModel)
+        }
+    }
+
+    private fun handleIntent(intent: Intent?, viewModel: CallViewModel) {
+        if (intent?.action == "ANSWER_CALL") {
+            Log.i(TAG, "Answer call action triggered from notification")
+            viewModel.acceptCall()
         }
     }
 }

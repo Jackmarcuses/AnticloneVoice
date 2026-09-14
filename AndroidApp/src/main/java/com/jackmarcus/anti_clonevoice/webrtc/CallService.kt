@@ -10,6 +10,7 @@ import com.jackmarcus.anti_clonevoice.MainActivity
 import com.jackmarcus.anti_clonevoice.R
 
 import android.content.pm.ServiceInfo
+import android.util.Log
 
 class CallService : Service() {
     companion object {
@@ -33,14 +34,23 @@ class CallService : Service() {
         createNotificationChannel()
         val notification = createNotification()
         
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            startForeground(
-                NOTIFICATION_ID, 
-                notification, 
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                startForeground(
+                    NOTIFICATION_ID, 
+                    notification, 
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            Log.e("CallService", "Failed to start foreground service: ${e.message}")
+            // If it fails, we still want to show the notification if possible or stop self
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // On Android 12+, we can't start foreground from background in some cases
+                stopSelf()
+            }
         }
         
         return START_STICKY

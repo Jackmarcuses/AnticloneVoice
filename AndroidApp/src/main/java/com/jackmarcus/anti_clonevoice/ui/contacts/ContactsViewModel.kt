@@ -1,5 +1,6 @@
 package com.jackmarcus.anti_clonevoice.ui.contacts
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.jackmarcus.anti_clonevoice.data.remote.PresenceManager
@@ -45,6 +46,7 @@ class ContactsViewModel(
         presenceManager.connect()
         viewModelScope.launch {
             presenceManager.presenceUpdates.collect { update ->
+                Log.d("ContactsViewModel", "Presence update: ${update.userId} -> ${update.status}")
                 _uiState.update { state ->
                     val updatedContacts = state.contacts.map { contact ->
                         if (contact.userId == update.userId) {
@@ -53,7 +55,6 @@ class ContactsViewModel(
                             contact
                         }
                     }
-                    // Sort online contacts to the top for a better UX
                     state.copy(contacts = updatedContacts.sortedByDescending { it.isOnline })
                 }
             }

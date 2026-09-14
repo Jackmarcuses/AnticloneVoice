@@ -54,7 +54,12 @@ class WebRtcClient(
     private var localAudioTrack: AudioTrack? = null
 
     init {
-        initializeFactory(context)
+        try {
+            initializeFactory(context)
+            Log.i(TAG, "WebRtcClient instance created")
+        } catch (e: Exception) {
+            Log.e(TAG, "Initialization failed in init: ${e.message}")
+        }
     }
 
     private fun buildPeerConnectionFactory(): PeerConnectionFactory {
@@ -149,9 +154,17 @@ class WebRtcClient(
     }
 
     fun onRemoteSessionDescription(sdp: SessionDescription) {
+        Log.i(TAG, "Setting remote description: ${sdp.type}")
         if (peerConnection == null) {
+            Log.d(TAG, "Creating PeerConnection for remote SDP")
             peerConnection = createPeerConnection()
         }
+        
+        if (peerConnection == null) {
+            Log.e(TAG, "PeerConnection is still NULL, cannot set remote description")
+            return
+        }
+
         peerConnection?.setRemoteDescription(object : SdpObserver {
             override fun onCreateSuccess(p0: SessionDescription?) {}
             override fun onSetSuccess() {
@@ -204,9 +217,18 @@ class WebRtcClient(
     }
 
     fun close() {
-        statsTimer?.cancel()
-        peerConnection?.close()
-        peerConnection = null
+        try {
+            statsTimer?.cancel()
+            statsTimer = null
+            localAudioTrack?.setEnabled(false)
+            localAudioTrack?.dispose()
+            localAudioTrack = null
+            peerConnection?.close()
+            peerConnection = null
+            Log.i(TAG, "WebRtcClient closed safely")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error during close: ${e.message}")
+        }
     }
 
     fun setMute(isMuted: Boolean) {

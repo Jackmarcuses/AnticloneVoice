@@ -59,8 +59,14 @@ class CallViewModel(
     }
 
     private fun handleSignalingMessage(message: SignalingMessage) {
+        Log.i(TAG, "New Signaling Message: ${message.type} from ${message.senderId}")
+        
+        // Safety check: Don't process our own messages if they somehow loop back
+        if (message.senderId == myUserId) return
+
         when (message.type) {
             "offer" -> {
+                Log.d(TAG, "Handling 'offer'")
                 // Fix: Allow handling offer if we are in RINGING or DIALING (meaning we just accepted)
                 if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING || _callState.value == CallState.DIALING) {
                     _remoteUserId.value = message.senderId
@@ -72,11 +78,13 @@ class CallViewModel(
                 }
             }
             "answer" -> {
+                Log.d(TAG, "Handling 'answer'")
                 callAudioManager.stopAll()
                 webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.ANSWER, message.data))
                 _callState.value = CallState.CONNECTED
             }
             "candidate" -> {
+                Log.d(TAG, "Handling 'candidate'")
                 val candidateData = message.data?.split("|") ?: return
                 if (candidateData.size >= 3) {
                     val candidate = IceCandidate(candidateData[0], candidateData[1].toInt(), candidateData[2])
@@ -84,6 +92,7 @@ class CallViewModel(
                 }
             }
             "call_request" -> {
+                 Log.i(TAG, "Received 'call_request' from ${message.senderId}")
                  _remoteUserId.value = message.senderId
                  _callState.value = CallState.RINGING
                  callAudioManager.startRinging()
@@ -187,6 +196,7 @@ class CallViewModel(
             when (state) {
                 PeerConnection.IceConnectionState.CONNECTED -> {
                     callAudioManager.stopAll()
+                    callAudioManager.setCommunicationMode()
                     _callState.value = CallState.CONNECTED
                     retryCount = 0
                 }

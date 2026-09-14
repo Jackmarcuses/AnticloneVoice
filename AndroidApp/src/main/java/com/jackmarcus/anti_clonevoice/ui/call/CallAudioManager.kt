@@ -31,6 +31,7 @@ class CallAudioManager(private val context: Context) {
     fun startRinging() {
         stopAll()
         Log.d(TAG, "Starting Ringing...")
+        audioManager.mode = AudioManager.MODE_RINGTONE
         try {
             val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
             mediaPlayer = MediaPlayer().apply {
@@ -87,9 +88,15 @@ class CallAudioManager(private val context: Context) {
 
     fun stopAll() {
         Log.d(TAG, "Stopping all sounds and vibration")
+        audioManager.mode = AudioManager.MODE_NORMAL
         mediaPlayer?.stop()
         mediaPlayer?.release()
         mediaPlayer = null
         vibrator?.cancel()
+    }
+
+    fun setCommunicationMode() {
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+        audioManager.isSpeakerphoneOn = true
     }
 }

@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.*
+import java.util.Timer
+import java.util.TimerTask
 
 class SignalingClient(
     private val okHttpClient: OkHttpClient
@@ -48,10 +50,22 @@ class SignalingClient(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.w(TAG, "Signaling WebSocket Closed: $reason")
+                // Reconnect after 3 seconds
+                Timer().schedule(object : TimerTask() {
+                    override fun run() {
+                        connect(userId)
+                    }
+                }, 3000)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Signaling WebSocket Failure: ${t.message}")
+                // Reconnect after 5 seconds
+                Timer().schedule(object : TimerTask() {
+                    override fun run() {
+                        connect(userId)
+                    }
+                }, 5000)
             }
         })
     }
