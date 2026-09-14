@@ -69,6 +69,11 @@ class MainActivity : ComponentActivity() {
         val chatRepository = ChatRepository(NetworkClient.chatService, secureStorage, okHttpClient)
         val chatViewModel = ChatViewModel(chatRepository, secureStorage)
 
+        // Handle Intent for answering from notification
+        if (intent?.action == "ANSWER_CALL") {
+            callViewModel.acceptCall()
+        }
+
         setContent {
             AnticloneVoiceTheme {
                 MainApp(authViewModel, contactsViewModel, callViewModel, chatViewModel)

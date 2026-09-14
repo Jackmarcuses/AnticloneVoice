@@ -47,19 +47,30 @@ class CallService : Service() {
     }
 
     private fun createNotification(callerName: String = "Incoming Call"): Notification {
-        val fullScreenIntent = Intent(this, MainActivity::class.java)
+        val fullScreenIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
         val fullScreenPendingIntent = PendingIntent.getActivity(this, 0,
             fullScreenIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
+        // Create an intent to answer directly from notification
+        val answerIntent = Intent(this, MainActivity::class.java).apply {
+            action = "ANSWER_CALL"
+        }
+        val answerPendingIntent = PendingIntent.getActivity(this, 1,
+            answerIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.ic_menu_call)
+            .setSmallIcon(android.R.drawable.sym_def_app_icon) // More robust icon
             .setContentTitle("Anti-Clone Voice")
             .setContentText(callerName)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
             .setCategory(NotificationCompat.CATEGORY_CALL)
             .setFullScreenIntent(fullScreenPendingIntent, true)
+            .addAction(android.R.drawable.ic_menu_call, "Answer", answerPendingIntent)
             .setAutoCancel(true)
             .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 

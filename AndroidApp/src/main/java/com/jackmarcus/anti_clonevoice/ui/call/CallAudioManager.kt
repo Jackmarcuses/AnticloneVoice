@@ -33,17 +33,28 @@ class CallAudioManager(private val context: Context) {
         Log.d(TAG, "Starting Ringing...")
         try {
             val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_RINGTONE)
-            mediaPlayer = MediaPlayer.create(context, notification)
-            mediaPlayer?.isLooping = true
-            mediaPlayer?.start()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(context, notification)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                isLooping = true
+                prepare()
+                start()
+            }
 
-            // Start Vibration
-            val pattern = longArrayOf(0, 1000, 1000)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
-            } else {
-                @Suppress("DEPRECATION")
-                vibrator?.vibrate(pattern, 0)
+            // Start Vibration with safety check
+            if (vibrator != null && vibrator!!.hasVibrator()) {
+                val pattern = longArrayOf(0, 1000, 1000)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    vibrator?.vibrate(VibrationEffect.createWaveform(pattern, 0))
+                } else {
+                    @Suppress("DEPRECATION")
+                    vibrator?.vibrate(pattern, 0)
+                }
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error playing ringtone: ${e.message}")
@@ -54,7 +65,7 @@ class CallAudioManager(private val context: Context) {
         stopAll()
         Log.d(TAG, "Starting Dialing tone...")
         try {
-            // Use a short, repetitive beep for dialing instead of a generic notification
+            // Using a distinct, shorter tone for the caller (Dialing)
             val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
             mediaPlayer = MediaPlayer().apply {
                 setDataSource(context, notification)
@@ -66,6 +77,7 @@ class CallAudioManager(private val context: Context) {
                 )
                 isLooping = true
                 prepare()
+                setVolume(0.3f, 0.3f) // Very soft background beep for the caller
                 start()
             }
         } catch (e: Exception) {

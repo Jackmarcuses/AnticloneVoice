@@ -5,8 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
@@ -15,8 +15,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.jackmarcus.anti_clonevoice.data.remote.models.ContactResponse
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -33,10 +36,11 @@ fun ContactsScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = { Text("Anti-Clone Voice", style = MaterialTheme.typography.titleLarge) },
+            LargeTopAppBar(
+                title = { Text("Anti-Clone Voice", fontWeight = FontWeight.Bold) },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    titleContentColor = MaterialTheme.colorScheme.onPrimaryContainer
                 ),
                 actions = {
                     IconButton(onClick = { showAddDialog = true }) {
@@ -55,28 +59,18 @@ fun ContactsScreen(
             .background(MaterialTheme.colorScheme.background)) {
             if (uiState.isLoading && uiState.contacts.isEmpty()) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (uiState.error != null && uiState.contacts.isEmpty()) {
-                Text(
-                    text = uiState.error ?: "Unknown error",
-                    color = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.align(Alignment.Center)
-                )
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
-                    item {
-                        Text(
-                            "My Contacts",
-                            style = MaterialTheme.typography.labelMedium,
-                            modifier = Modifier.padding(16.dp),
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
                     items(uiState.contacts) { contact ->
-                        ContactItem(
+                        WhatsAppContactItem(
                             contact = contact,
-                            onDelete = { viewModel.deleteContact(contact.userId) },
-                            onCall = { onCallContact(contact.userId) },
-                            onChat = { onChatContact(contact.userId, contact.username) }
+                            onClick = { onChatContact(contact.userId, contact.username) },
+                            onCall = { onCallContact(contact.userId) }
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(start = 72.dp),
+                            thickness = 0.5.dp,
+                            color = Color.LightGray.copy(alpha = 0.3f)
                         )
                     }
                 }
@@ -135,49 +129,67 @@ fun ContactsScreen(
 }
 
 @Composable
-fun ContactItem(
+fun WhatsAppContactItem(
     contact: ContactResponse,
-    onDelete: () -> Unit,
-    onCall: () -> Unit,
-    onChat: () -> Unit
+    onClick: () -> Unit,
+    onCall: () -> Unit
 ) {
-    ListItem(
-        modifier = Modifier.clickable { onChat() },
-        headlineContent = { Text(contact.username) },
-        supportingContent = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .clip(CircleShape)
+                .background(Color.Gray.copy(alpha = 0.2f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(30.dp))
+            if (contact.isOnline) {
                 Box(
                     modifier = Modifier
-                        .size(8.dp)
-                        .padding(end = 4.dp),
+                        .align(Alignment.BottomEnd)
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                        .padding(2.dp)
                 ) {
-                   // Status dot
-                   Surface(
-                       shape = MaterialTheme.shapes.small,
-                       color = if (contact.isOnline) Color.Green else Color.Gray,
-                       modifier = Modifier.fillMaxSize()
-                   ) {}
-                }
-                Text(if (contact.isOnline) "Online" else "Offline")
-            }
-        },
-        leadingContent = {
-            Icon(Icons.Default.Person, contentDescription = null)
-        },
-        trailingContent = {
-            Row {
-                IconButton(onClick = onChat) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Chat", tint = MaterialTheme.colorScheme.primary)
-                }
-                if (contact.isOnline) {
-                    IconButton(onClick = onCall) {
-                        Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.Green)
-                    }
-                }
-                IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "Delete")
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(CircleShape)
+                            .background(Color(0xFF25D366)) // WhatsApp Green
+                    )
                 }
             }
         }
-    )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = contact.username,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = if (contact.isOnline) "Online" else "Last seen recently",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (contact.isOnline) Color(0xFF25D366) else Color.Gray
+            )
+        }
+
+        IconButton(onClick = onCall) {
+            Icon(
+                Icons.Default.Call,
+                contentDescription = "Call",
+                tint = Color(0xFF25D366),
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
 }
