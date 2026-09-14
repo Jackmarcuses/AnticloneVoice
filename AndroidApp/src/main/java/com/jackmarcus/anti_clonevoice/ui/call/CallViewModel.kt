@@ -39,6 +39,9 @@ class CallViewModel(
     private val _isMuted = MutableStateFlow(false)
     val isMuted = _isMuted.asStateFlow()
 
+    private val _isSpeakerOn = MutableStateFlow(true)
+    val isSpeakerOn = _isSpeakerOn.asStateFlow()
+
     private val _remoteAudioLevel = MutableStateFlow(0f)
     val remoteAudioLevel = _remoteAudioLevel.asStateFlow()
 
@@ -192,6 +195,12 @@ class CallViewModel(
         val muted = !_isMuted.value
         _isMuted.value = muted
         webRtcClient?.setMute(muted)
+    }
+
+    fun toggleSpeaker() {
+        val speakerOn = !_isSpeakerOn.value
+        _isSpeakerOn.value = speakerOn
+        callAudioManager.setSpeakerphoneOn(speakerOn)
     }
 
     private fun startCallService() {

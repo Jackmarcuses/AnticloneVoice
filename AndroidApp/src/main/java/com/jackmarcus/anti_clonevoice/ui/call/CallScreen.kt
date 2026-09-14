@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.VolumeOff
+import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.CallEnd
 import androidx.compose.material.icons.filled.Mic
@@ -32,6 +34,7 @@ fun CallScreen(
     val callState by viewModel.callState.collectAsState()
     val remoteUserId by viewModel.remoteUserId.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
+    val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
     val audioLevel by viewModel.remoteAudioLevel.collectAsState()
     val duration by viewModel.callDuration.collectAsState()
 
@@ -114,6 +117,13 @@ fun CallScreen(
                         backgroundColor = if (isMuted) Color.White.copy(alpha = 0.1f) else Color.Transparent,
                         contentColor = Color.White,
                         onClick = { viewModel.toggleMute() }
+                    )
+
+                    CallControlButton(
+                        icon = if (isSpeakerOn) Icons.AutoMirrored.Filled.VolumeUp else Icons.AutoMirrored.Filled.VolumeOff,
+                        backgroundColor = if (isSpeakerOn) Color.White.copy(alpha = 0.1f) else Color.Transparent,
+                        contentColor = Color.White,
+                        onClick = { viewModel.toggleSpeaker() }
                     )
 
                     if (callState == CallState.RINGING) {

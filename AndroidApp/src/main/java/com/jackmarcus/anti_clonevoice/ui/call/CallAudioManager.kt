@@ -99,4 +99,8 @@ class CallAudioManager(private val context: Context) {
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = true
     }
+
+    fun setSpeakerphoneOn(on: Boolean) {
+        audioManager.isSpeakerphoneOn = on
+    }
 }

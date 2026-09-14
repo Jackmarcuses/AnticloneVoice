@@ -62,24 +62,39 @@ fun Application.configureSockets() {
 
         webSocket("/api/v1/call/signal/{userId}") {
             val userId = call.parameters["userId"] ?: return@webSocket
+            
+            // Log when a user connects to signaling
+            println("User $userId connected to Signaling WebSocket")
             userSessions[userId] = this
 
             try {
                 for (frame in incoming) {
                     if (frame is Frame.Text) {
                         val text = frame.readText()
+                        println("Signaling from $userId: $text") // CRITICAL for debugging loops
+                        
                         val message = Json.decodeFromString<SignalingMessage>(text)
                         
+                        // FIX: Ensure we don't send the message back to the sender
+                        if (message.receiverId == userId) {
+                            println("WARNING: Dropping loopback message for $userId")
+                            continue
+                        }
+
                         // Route to receiver
                         val receiverSession = userSessions[message.receiverId]
                         if (receiverSession != null) {
+                            println("Routing signaling from $userId to ${message.receiverId}")
                             receiverSession.send(Frame.Text(text))
+                        } else {
+                            println("Receiver ${message.receiverId} is not connected to signaling")
                         }
                     }
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                println("Error in Signaling for $userId: ${e.message}")
             } finally {
+                println("User $userId disconnected from Signaling")
                 userSessions.remove(userId)
             }
         }
