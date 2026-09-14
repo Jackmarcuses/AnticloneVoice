@@ -21,13 +21,13 @@ dependencies {
     implementation(libs.logback.classic)
     implementation(libs.firebase.admin)
     
-    // Database
-    implementation(libs.exposed.core)
-    implementation(libs.exposed.dao)
-    implementation(libs.exposed.jdbc)
-    implementation(libs.exposed.kotlin.datetime)
-    implementation(libs.postgresql)
-    implementation(libs.hikaricp)
+    // Database (Using explicit strings to ensure Render builds correctly)
+    implementation("org.jetbrains.exposed:exposed-core:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-dao:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-jdbc:1.5.0")
+    implementation("org.jetbrains.exposed:exposed-kotlin-datetime:1.5.0")
+    implementation("org.postgresql:postgresql:42.7.13")
+    implementation("com.zaxxer:HikariCP:7.1.0")
     
     testImplementation(libs.ktor.server.tests)
     testImplementation(libs.ktor.client.negotiation)

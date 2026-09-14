@@ -1,6 +1,6 @@
 package com.jackmarcus.backend.database
 
-import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.*
 
 object Users : Table("users") {
     val id = varchar("id", 128)

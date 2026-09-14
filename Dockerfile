@@ -1,13 +1,13 @@
 # Stage 1: Build the project
-FROM eclipse-temurin:11-jdk AS build
+FROM gradle:8.4.0-jdk11 AS build
 WORKDIR /home/gradle/src
-COPY . .
+COPY --chown=gradle:gradle . .
 
 # Ensure the gradlew script is executable
 RUN chmod +x ./gradlew
 
-# Build the Backend distribution
-RUN ./gradlew :Backend:installDist --no-daemon
+# Build the Backend distribution without configuration cache to avoid serialization errors on Render
+RUN ./gradlew :Backend:installDist --no-daemon --no-configuration-cache
 
 # Stage 2: Runtime
 FROM eclipse-temurin:11-jre

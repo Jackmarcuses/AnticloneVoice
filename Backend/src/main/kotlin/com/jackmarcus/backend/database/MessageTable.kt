@@ -1,6 +1,6 @@
 package com.jackmarcus.backend.database
 
-import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.*
 
 object Messages : Table("messages") {
     val id = integer("id").autoIncrement()
