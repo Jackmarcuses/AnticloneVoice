@@ -61,7 +61,7 @@ class CallService : Service() {
             answerIntent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.sym_def_app_icon) // More robust icon
+            .setSmallIcon(android.R.drawable.ic_dialog_info) // System icon that always exists
             .setContentTitle("Anti-Clone Voice")
             .setContentText(callerName)
             .setPriority(NotificationCompat.PRIORITY_MAX)
