@@ -23,6 +23,7 @@ import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.NetworkClient
 import com.jackmarcus.anti_clonevoice.data.remote.PresenceManager
 import com.jackmarcus.anti_clonevoice.data.repository.AuthRepository
+import com.jackmarcus.anti_clonevoice.data.repository.ChatRepository
 import com.jackmarcus.anti_clonevoice.data.repository.ContactsRepository
 import com.jackmarcus.anti_clonevoice.ui.auth.AuthViewModel
 import com.jackmarcus.anti_clonevoice.ui.auth.LoginScreen
@@ -30,12 +31,22 @@ import com.jackmarcus.anti_clonevoice.ui.auth.SignupScreen
 import com.jackmarcus.anti_clonevoice.ui.call.CallScreen
 import com.jackmarcus.anti_clonevoice.ui.call.CallState
 import com.jackmarcus.anti_clonevoice.ui.call.CallViewModel
+import com.jackmarcus.anti_clonevoice.ui.chat.ChatScreen
+import com.jackmarcus.anti_clonevoice.ui.chat.ChatViewModel
 import com.jackmarcus.anti_clonevoice.ui.contacts.ContactsScreen
 import com.jackmarcus.anti_clonevoice.ui.contacts.ContactsViewModel
 import com.jackmarcus.anti_clonevoice.ui.profile.ProfileScreen
 import com.jackmarcus.anti_clonevoice.ui.theme.AnticloneVoiceTheme
 import com.jackmarcus.anti_clonevoice.webrtc.SignalingClient
 import okhttp3.OkHttpClient
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.*
+import androidx.navigation.NavDestination.Companion.hierarchy
+import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.compose.currentBackStackEntryAsState
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -54,10 +65,13 @@ class MainActivity : ComponentActivity() {
         val okHttpClient = OkHttpClient()
         val signalingClient = SignalingClient(okHttpClient)
         val callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage)
+        
+        val chatRepository = ChatRepository(NetworkClient.chatService, secureStorage, okHttpClient)
+        val chatViewModel = ChatViewModel(chatRepository, secureStorage)
 
         setContent {
             AnticloneVoiceTheme {
-                MainApp(authViewModel, contactsViewModel, callViewModel)
+                MainApp(authViewModel, contactsViewModel, callViewModel, chatViewModel)
             }
         }
     }
@@ -67,7 +81,8 @@ class MainActivity : ComponentActivity() {
 fun MainApp(
     authViewModel: AuthViewModel,
     contactsViewModel: ContactsViewModel,
-    callViewModel: CallViewModel
+    callViewModel: CallViewModel,
+    chatViewModel: ChatViewModel
 ) {
     val navController = rememberNavController()
     val context = LocalContext.current
@@ -124,7 +139,39 @@ fun MainApp(
         if (authViewModel.isLoggedIn()) "profile" else "login"
     }
 
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            if (authState !is AuthViewModel.AuthState.Idle && authViewModel.isLoggedIn()) {
+                NavigationBar {
+                    val items = listOf(
+                        Triple("contacts", "Contacts", Icons.Default.Person),
+                        Triple("chats_list", "Chats", Icons.Default.Email),
+                        Triple("profile", "Profile", Icons.Default.AccountCircle)
+                    )
+                    items.forEach { (route, label, icon) ->
+                        NavigationBarItem(
+                            icon = { Icon(icon, contentDescription = label) },
+                            label = { Text(label) },
+                            selected = currentDestination?.hierarchy?.any { it.route == route } == true,
+                            onClick = {
+                                navController.navigate(route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
         NavHost(
             navController = navController,
             startDestination = startDestination,
@@ -167,11 +214,38 @@ fun MainApp(
             composable("contacts") {
                 ContactsScreen(
                     viewModel = contactsViewModel,
-                    onNavigateToProfile = { navController.popBackStack() },
+                    onNavigateToProfile = { navController.navigate("profile") },
                     onCallContact = { userId ->
                         callViewModel.startCall(userId)
                         navController.navigate("call")
+                    },
+                    onChatContact = { userId, username ->
+                        navController.navigate("chat/$userId/$username")
                     }
+                )
+            }
+            composable("chats_list") {
+                // Reusing ContactsScreen as a way to start chats for now
+                ContactsScreen(
+                    viewModel = contactsViewModel,
+                    onNavigateToProfile = { navController.navigate("profile") },
+                    onCallContact = { userId ->
+                        callViewModel.startCall(userId)
+                        navController.navigate("call")
+                    },
+                    onChatContact = { userId, username ->
+                        navController.navigate("chat/$userId/$username")
+                    }
+                )
+            }
+            composable("chat/{contactId}/{contactName}") { backStackEntry ->
+                val contactId = backStackEntry.arguments?.getString("contactId") ?: ""
+                val contactName = backStackEntry.arguments?.getString("contactName") ?: ""
+                ChatScreen(
+                    viewModel = chatViewModel,
+                    contactId = contactId,
+                    contactName = contactName,
+                    onBack = { navController.popBackStack() }
                 )
             }
             composable("call") {

@@ -1,5 +1,6 @@
 package com.jackmarcus.backend.plugins
 
+import com.jackmarcus.backend.database.MessageDatabase
 import com.jackmarcus.backend.database.UserDatabase
 import com.jackmarcus.backend.models.*
 import io.ktor.http.*
@@ -144,6 +145,15 @@ fun Application.configureRouting() {
                     ContactResponse(it.id, it.username, UserDatabase.isOnline(it.id))
                 }
                 call.respond(contacts)
+            }
+
+            get("/api/v1/messages/{contactId}") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: return@get call.respond(HttpStatusCode.Unauthorized)
+                val contactId = call.parameters["contactId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                
+                val messages = MessageDatabase.getMessagesBetween(userId, contactId)
+                call.respond(messages)
             }
 
             post("/api/v1/contacts") {

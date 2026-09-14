@@ -53,13 +53,21 @@ class CallAudioManager(private val context: Context) {
     fun startDialing() {
         stopAll()
         Log.d(TAG, "Starting Dialing tone...")
-        // For a real app, you'd have a 'dialing.mp3' in res/raw. 
-        // Using a generic beep or system sound for now.
         try {
+            // Use a short, repetitive beep for dialing instead of a generic notification
             val notification: Uri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
-            mediaPlayer = MediaPlayer.create(context, notification)
-            mediaPlayer?.isLooping = true
-            mediaPlayer?.start()
+            mediaPlayer = MediaPlayer().apply {
+                setDataSource(context, notification)
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build()
+                )
+                isLooping = true
+                prepare()
+                start()
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Error playing dialing tone: ${e.message}")
         }

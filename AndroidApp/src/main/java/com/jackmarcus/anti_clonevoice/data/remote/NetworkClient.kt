@@ -32,4 +32,5 @@ object NetworkClient {
 
     val authService: AuthService = retrofit.create(AuthService::class.java)
     val contactsService: ContactsService = retrofit.create(ContactsService::class.java)
+    val chatService: ChatService = retrofit.create(ChatService::class.java)
 }

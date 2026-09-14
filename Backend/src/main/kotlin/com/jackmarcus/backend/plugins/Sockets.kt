@@ -1,6 +1,8 @@
 package com.jackmarcus.backend.plugins
 
+import com.jackmarcus.backend.database.MessageDatabase
 import com.jackmarcus.backend.database.UserDatabase
+import com.jackmarcus.backend.models.ChatMessagePayload
 import com.jackmarcus.backend.models.PresenceUpdate
 import com.jackmarcus.backend.models.SignalingMessage
 import io.ktor.serialization.kotlinx.*
@@ -15,6 +17,7 @@ import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
 val userSessions = ConcurrentHashMap<String, WebSocketServerSession>()
+val chatSessions = ConcurrentHashMap<String, WebSocketServerSession>()
 
 fun Application.configureSockets() {
     install(WebSockets) {
@@ -71,8 +74,6 @@ fun Application.configureSockets() {
                         val receiverSession = userSessions[message.receiverId]
                         if (receiverSession != null) {
                             receiverSession.send(Frame.Text(text))
-                        } else {
-                            // Optionally send back "user_unavailable"
                         }
                     }
                 }
@@ -80,6 +81,34 @@ fun Application.configureSockets() {
                 e.printStackTrace()
             } finally {
                 userSessions.remove(userId)
+            }
+        }
+
+        webSocket("/api/v1/chat/{userId}") {
+            val userId = call.parameters["userId"] ?: return@webSocket
+            chatSessions[userId] = this
+
+            try {
+                for (frame in incoming) {
+                    if (frame is Frame.Text) {
+                        val text = frame.readText()
+                        val payload = Json.decodeFromString<ChatMessagePayload>(text)
+                        
+                        if (payload.type == "chat_message") {
+                            val msg = payload.message
+                            // Persist to DB
+                            MessageDatabase.addMessage(msg)
+                            
+                            // Forward to receiver
+                            val receiverSession = chatSessions[msg.receiverId]
+                            receiverSession?.send(Frame.Text(text))
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                chatSessions.remove(userId)
             }
         }
     }

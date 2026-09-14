@@ -1,10 +1,12 @@
 package com.jackmarcus.anti_clonevoice.ui.contacts
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Delete
@@ -22,7 +24,8 @@ import com.jackmarcus.anti_clonevoice.data.remote.models.ContactResponse
 fun ContactsScreen(
     viewModel: ContactsViewModel,
     onNavigateToProfile: () -> Unit,
-    onCallContact: (String) -> Unit
+    onCallContact: (String) -> Unit,
+    onChatContact: (String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showAddDialog by remember { mutableStateOf(false) }
@@ -72,7 +75,8 @@ fun ContactsScreen(
                         ContactItem(
                             contact = contact,
                             onDelete = { viewModel.deleteContact(contact.userId) },
-                            onCall = { onCallContact(contact.userId) }
+                            onCall = { onCallContact(contact.userId) },
+                            onChat = { onChatContact(contact.userId, contact.username) }
                         )
                     }
                 }
@@ -134,9 +138,11 @@ fun ContactsScreen(
 fun ContactItem(
     contact: ContactResponse,
     onDelete: () -> Unit,
-    onCall: () -> Unit
+    onCall: () -> Unit,
+    onChat: () -> Unit
 ) {
     ListItem(
+        modifier = Modifier.clickable { onChat() },
         headlineContent = { Text(contact.username) },
         supportingContent = {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -160,6 +166,9 @@ fun ContactItem(
         },
         trailingContent = {
             Row {
+                IconButton(onClick = onChat) {
+                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Chat", tint = MaterialTheme.colorScheme.primary)
+                }
                 if (contact.isOnline) {
                     IconButton(onClick = onCall) {
                         Icon(Icons.Default.Call, contentDescription = "Call", tint = Color.Green)

@@ -61,11 +61,12 @@ class CallViewModel(
     private fun handleSignalingMessage(message: SignalingMessage) {
         when (message.type) {
             "offer" -> {
-                if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING) {
+                // Fix: Allow handling offer if we are in RINGING or DIALING (meaning we just accepted)
+                if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING || _callState.value == CallState.DIALING) {
                     _remoteUserId.value = message.senderId
-                    _callState.value = CallState.RINGING
-                    callAudioManager.startRinging()
-                    startCallService()
+                    if (_callState.value != CallState.CONNECTED) {
+                        _callState.value = CallState.RINGING
+                    }
                     webRtcClient = WebRtcClient(context, this)
                     webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.OFFER, message.data))
                 }
