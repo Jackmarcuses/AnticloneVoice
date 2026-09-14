@@ -33,6 +33,13 @@ fun CallScreen(
     val remoteUserId by viewModel.remoteUserId.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
     val audioLevel by viewModel.remoteAudioLevel.collectAsState()
+    val duration by viewModel.callDuration.collectAsState()
+
+    fun formatDuration(seconds: Long): String {
+        val mins = seconds / 60
+        val secs = seconds % 60
+        return "%02d:%02d".format(mins, secs)
+    }
 
     // Handle call termination
     LaunchedEffect(callState) {
@@ -73,7 +80,7 @@ fun CallScreen(
                 text = when(callState) {
                     CallState.DIALING -> "Calling..."
                     CallState.RINGING -> "Incoming Call..."
-                    CallState.CONNECTED -> "00:00"
+                    CallState.CONNECTED -> formatDuration(duration)
                     CallState.FAILED -> "Call Failed"
                     else -> ""
                 },

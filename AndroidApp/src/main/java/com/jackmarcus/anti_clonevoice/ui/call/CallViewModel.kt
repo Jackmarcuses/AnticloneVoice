@@ -11,6 +11,8 @@ import com.jackmarcus.anti_clonevoice.data.remote.models.SignalingMessage
 import com.jackmarcus.anti_clonevoice.webrtc.CallService
 import com.jackmarcus.anti_clonevoice.webrtc.SignalingClient
 import com.jackmarcus.anti_clonevoice.webrtc.WebRtcClient
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import org.webrtc.IceCandidate
@@ -40,7 +42,11 @@ class CallViewModel(
     private val _remoteAudioLevel = MutableStateFlow(0f)
     val remoteAudioLevel = _remoteAudioLevel.asStateFlow()
 
+    private val _callDuration = MutableStateFlow(0L)
+    val callDuration = _callDuration.asStateFlow()
+
     private val callAudioManager = CallAudioManager(context)
+    private var timerJob: Job? = null
     private var webRtcClient: WebRtcClient? = null
     private val myUserId = secureStorage.getUserId() ?: ""
     private var isCaller = false
@@ -70,13 +76,12 @@ class CallViewModel(
         when (message.type) {
             "offer" -> {
                 Log.d(TAG, "Handling 'offer'")
-                // Fix: Allow handling offer if we are in RINGING or DIALING (meaning we just accepted)
                 if (_callState.value == CallState.IDLE || _callState.value == CallState.RINGING || _callState.value == CallState.DIALING) {
                     _remoteUserId.value = message.senderId
-                    if (_callState.value != CallState.CONNECTED) {
-                        _callState.value = CallState.RINGING
+                    // Ensure we have a client instance to handle the remote description
+                    if (webRtcClient == null) {
+                        webRtcClient = WebRtcClient(context, this)
                     }
-                    webRtcClient = WebRtcClient(context, this)
                     webRtcClient?.onRemoteSessionDescription(SessionDescription(SessionDescription.Type.OFFER, message.data))
                 }
             }
@@ -146,7 +151,7 @@ class CallViewModel(
         callAudioManager.stopAll()
         val receiverId = _remoteUserId.value ?: return
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "accepted"))
-        _callState.value = CallState.DIALING
+        // Don't change state to DIALING here yet, let the 'offer' handle client creation
     }
 
     fun rejectCall() {
@@ -161,9 +166,26 @@ class CallViewModel(
         val receiverId = _remoteUserId.value ?: return
         stopCallService()
         callAudioManager.stopAll()
+        stopTimer()
         signalingClient.sendMessage(SignalingMessage("end_call", myUserId, receiverId))
         webRtcClient?.close()
         _callState.value = CallState.ENDED
+    }
+
+    private fun startTimer() {
+        stopTimer()
+        _callDuration.value = 0
+        timerJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                _callDuration.value += 1
+            }
+        }
+    }
+
+    private fun stopTimer() {
+        timerJob?.cancel()
+        timerJob = null
     }
 
     fun toggleMute() {
@@ -204,12 +226,15 @@ class CallViewModel(
         viewModelScope.launch {
             when (state) {
                 PeerConnection.IceConnectionState.CONNECTED -> {
+                    Log.i(TAG, "Call Connected!")
                     callAudioManager.stopAll()
                     callAudioManager.setCommunicationMode()
                     _callState.value = CallState.CONNECTED
+                    startTimer()
                     retryCount = 0
                 }
                 PeerConnection.IceConnectionState.FAILED, PeerConnection.IceConnectionState.DISCONNECTED -> {
+                    stopTimer()
                     if (retryCount < MAX_RETRIES) {
                         retryCount++
                         Log.w(TAG, "Connection lost. Retry attempt $retryCount")
