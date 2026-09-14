@@ -37,6 +37,9 @@ class CallViewModel(
     private val _isMuted = MutableStateFlow(false)
     val isMuted = _isMuted.asStateFlow()
 
+    private val _remoteAudioLevel = MutableStateFlow(0f)
+    val remoteAudioLevel = _remoteAudioLevel.asStateFlow()
+
     private val callAudioManager = CallAudioManager(context)
     private var webRtcClient: WebRtcClient? = null
     private val myUserId = secureStorage.getUserId() ?: ""
@@ -92,6 +95,12 @@ class CallViewModel(
                 }
             }
             "call_request" -> {
+                 // Loopback Fix: Strictly ignore call_request if we are already calling
+                 if (isCaller || _callState.value == CallState.DIALING || _callState.value == CallState.CONNECTED) {
+                     Log.d(TAG, "Ignoring self-loop 'call_request'")
+                     return
+                 }
+                 
                  Log.i(TAG, "Received 'call_request' from ${message.senderId}")
                  _remoteUserId.value = message.senderId
                  _callState.value = CallState.RINGING
@@ -216,5 +225,10 @@ class CallViewModel(
                 else -> {}
             }
         }
+    }
+
+    override fun onRemoteAudioLevel(level: Double) {
+        // Convert normalized 0.0-1.0 level to a float for Compose animation
+        _remoteAudioLevel.value = level.toFloat()
     }
 }

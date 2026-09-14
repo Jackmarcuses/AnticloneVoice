@@ -1,5 +1,6 @@
 package com.jackmarcus.anti_clonevoice.ui.call
 
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,7 @@ fun CallScreen(
     val callState by viewModel.callState.collectAsState()
     val remoteUserId by viewModel.remoteUserId.collectAsState()
     val isMuted by viewModel.isMuted.collectAsState()
+    val audioLevel by viewModel.remoteAudioLevel.collectAsState()
 
     // Handle call termination
     LaunchedEffect(callState) {
@@ -79,6 +81,11 @@ fun CallScreen(
                 fontSize = 18.sp
             )
 
+            if (callState == CallState.CONNECTED) {
+                Spacer(modifier = Modifier.height(64.dp))
+                VoiceVisualizer(level = audioLevel)
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             // Controls Row
@@ -119,6 +126,50 @@ fun CallScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun VoiceVisualizer(level: Float) {
+    val infiniteTransition = rememberInfiniteTransition(label = "audio_anim")
+    val animScale by infiniteTransition.animateFloat(
+        initialValue = 0.8f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(500, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "scale"
+    )
+
+    // Current level combined with minor animation pulse. Level is typically 0.0 to 1.0
+    val displayLevel = (level * 150f).coerceIn(10f, 250f) * animScale
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(100.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Draw 7 bars that dance according to the level
+        repeat(7) { index ->
+            val factor = when(index) {
+                0, 6 -> 0.4f
+                1, 5 -> 0.7f
+                2, 4 -> 0.9f
+                else -> 1.1f
+            }
+            val barHeight = displayLevel * factor
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 4.dp)
+                    .width(6.dp)
+                    .height(barHeight.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF25D366)) // WhatsApp Green
+            )
         }
     }
 }

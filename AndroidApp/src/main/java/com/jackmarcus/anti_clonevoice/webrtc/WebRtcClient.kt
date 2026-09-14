@@ -35,6 +35,7 @@ class WebRtcClient(
         fun onIceCandidate(candidate: IceCandidate)
         fun onLocalSdpCreated(sessionDescription: SessionDescription)
         fun onConnectionStateChange(state: PeerConnection.IceConnectionState)
+        fun onRemoteAudioLevel(level: Double)
     }
 
     private val rootEglBase: EglBase = EglBase.create()
@@ -144,13 +145,19 @@ class WebRtcClient(
             override fun run() {
                 try {
                     peerConnection?.getStats { report ->
-                        Log.d(TAG, "Stats - RTT check")
+                        // Extract Audio Level for Visualizer
+                        report.statsMap.values.forEach { stats ->
+                            if (stats.type == "inbound-rtp") {
+                                val level = stats.members["audioLevel"] as? Double ?: 0.0
+                                observer.onRemoteAudioLevel(level)
+                            }
+                        }
                     }
                 } catch (e: Exception) {
                     Log.e(TAG, "Stats error: ${e.message}")
                 }
             }
-        }, 0, 10000)
+        }, 0, 200)
     }
 
     fun onRemoteSessionDescription(sdp: SessionDescription) {
