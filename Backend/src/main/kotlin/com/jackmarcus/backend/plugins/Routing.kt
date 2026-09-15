@@ -1,6 +1,7 @@
 package com.jackmarcus.backend.plugins
 
 import com.jackmarcus.backend.database.MessageDatabase
+import com.jackmarcus.backend.database.TranscriptDatabase
 import com.jackmarcus.backend.database.UserDatabase
 import com.jackmarcus.backend.models.*
 import io.ktor.http.*
@@ -129,10 +130,22 @@ fun Application.configureRouting() {
                 }
             }
 
+            post("/api/v1/profile/voice") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: return@post call.respond(HttpStatusCode.Unauthorized)
+                val request = call.receive<UpdateVoiceProfileRequest>()
+                
+                if (UserDatabase.updateVoiceProfile(userId, request.voiceEmbedding, request.baselineSpeechRate, request.pitchVariance)) {
+                    call.respond(HttpStatusCode.OK, MessageResponse("Voice profile updated"))
+                } else {
+                    call.respond(HttpStatusCode.BadRequest, MessageResponse("Could not update voice profile"))
+                }
+            }
+
             get("/api/v1/users/search") {
                 val query = call.request.queryParameters["query"] ?: return@get call.respond(HttpStatusCode.BadRequest, "Query required")
                 val users = UserDatabase.searchUsers(query).map {
-                    ContactResponse(it.id, it.username, UserDatabase.isOnline(it.id))
+                    ContactResponse(it.id, it.username, UserDatabase.isOnline(it.id), it.voiceEmbedding, it.baselineSpeechRate, it.pitchVariance)
                 }
                 call.respond(users)
             }
@@ -142,7 +155,7 @@ fun Application.configureRouting() {
                 val userId = principal?.payload?.getClaim("userId")?.asString() ?: return@get call.respond(HttpStatusCode.Unauthorized)
                 
                 val contacts = UserDatabase.getContacts(userId).map {
-                    ContactResponse(it.id, it.username, UserDatabase.isOnline(it.id))
+                    ContactResponse(it.id, it.username, UserDatabase.isOnline(it.id), it.voiceEmbedding, it.baselineSpeechRate, it.pitchVariance)
                 }
                 call.respond(contacts)
             }
@@ -178,6 +191,13 @@ fun Application.configureRouting() {
                 } else {
                     call.respond(HttpStatusCode.BadRequest, MessageResponse("Could not remove contact"))
                 }
+            }
+            post("/api/v1/transcripts") {
+                val principal = call.principal<JWTPrincipal>()
+                val userId = principal?.payload?.getClaim("userId")?.asString() ?: return@post call.respond(HttpStatusCode.Unauthorized)
+                val request = call.receive<TranscriptRequest>()
+                TranscriptDatabase.saveTranscript(userId, request.content, request.language)
+                call.respond(HttpStatusCode.Created)
             }
         }
     }

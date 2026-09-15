@@ -6,7 +6,10 @@ import kotlinx.serialization.Serializable
 data class ContactResponse(
     val userId: String,
     val username: String,
-    val isOnline: Boolean
+    val isOnline: Boolean,
+    val voiceEmbedding: String? = null,
+    val baselineSpeechRate: Float = 0.0f,
+    val pitchVariance: Float = 0.0f
 )
 
 @Serializable

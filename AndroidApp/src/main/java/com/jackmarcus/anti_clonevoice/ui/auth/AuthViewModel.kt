@@ -64,7 +64,10 @@ class AuthViewModel(private val repository: AuthRepository) : ViewModel() {
                 ProfileState.Success(result.getOrNull()!!)
             } else {
                 val error = result.exceptionOrNull()?.message ?: "Failed to fetch profile"
-                if (error.contains("User not found", ignoreCase = true) || error.contains("404", ignoreCase = true)) {
+                if (error.contains("User not found", ignoreCase = true) || 
+                    error.contains("404", ignoreCase = true) ||
+                    error.contains("Token is not valid", ignoreCase = true) ||
+                    error.contains("401", ignoreCase = true)) {
                     logout()
                 }
                 ProfileState.Error(error)

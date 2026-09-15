@@ -22,3 +22,11 @@
 ### 3. Signaling Latency
 - **Action**: Log time from `call_request` to `CONNECTED`.
 - **Expectation**: Total setup time < 3 seconds on stable 4G.
+
+### 4. TURN Cluster & TLS Fallback Test
+- **Action**: Place an Android device behind a strict symmetrical NAT or corporate firewall blocking all UDP outbound traffic and standard ports.
+- **Expectation**: WebRTC fails to establish direct P2P (`host`) or STUN (`srflx`) connections, automatically falls back to TCP/TLS `turns:turn.anticlonevoice.com:5349?transport=tcp`, logs `relay` candidate stats, and successfully connects the secure call.
+
+### 5. Manual ICE Restart Validation
+- **Action**: Mid-call, simulate a sudden IP address change or network drop on one device.
+- **Expectation**: `onConnectionStateChange` handles the `DISCONNECTED` or `FAILED` state robustly, logs `Attempting ICE Restart`, sends an `ice_restart` signaling message, triggers renegotiation with `IceRestart=true`, and transparently restores call connectivity without termination.

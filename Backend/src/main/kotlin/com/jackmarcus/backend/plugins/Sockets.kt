@@ -16,7 +16,8 @@ import java.time.Duration
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
-val userSessions = ConcurrentHashMap<String, WebSocketServerSession>()
+val presenceSessions = ConcurrentHashMap<String, WebSocketServerSession>()
+val signalingSessions = ConcurrentHashMap<String, WebSocketServerSession>()
 val chatSessions = ConcurrentHashMap<String, WebSocketServerSession>()
 
 fun Application.configureSockets() {
@@ -32,31 +33,37 @@ fun Application.configureSockets() {
         webSocket("/presence/{userId}") {
             val userId = call.parameters["userId"] ?: return@webSocket
             
-            userSessions[userId] = this
+            println("Presence connection: $userId")
+            presenceSessions[userId] = this
             UserDatabase.setUserOnline(userId)
             
             // 1. Tell all my friends I am now online
             broadcastPresence(userId, "online")
             
             // 2. IMMEDIATELY tell ME which of my friends are already online
-            val myContacts = UserDatabase.getContacts(userId)
-            myContacts.forEach { contact ->
-                if (UserDatabase.isOnline(contact.id)) {
-                    send(Frame.Text(Json.encodeToString(PresenceUpdate(contact.id, "online"))))
+            try {
+                val myContacts = UserDatabase.getContacts(userId)
+                myContacts.forEach { contact ->
+                    if (UserDatabase.isOnline(contact.id)) {
+                        send(Frame.Text(Json.encodeToString(PresenceUpdate(contact.id, "online"))))
+                    }
                 }
+            } catch (e: Exception) {
+                println("Error sending initial presence to $userId: ${e.message}")
             }
             
             try {
                 for (frame in incoming) {
-                    // Handle messages if needed, but presence is mostly connection based here
+                    // Stay alive
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
+                println("Presence connection lost for $userId: ${e.message}")
             } finally {
-                userSessions.remove(userId)
+                presenceSessions.remove(userId)
                 UserDatabase.setUserOffline(userId)
                 // Broadcast "offline" to contacts
                 broadcastPresence(userId, "offline")
+                println("Presence cleanup: $userId")
             }
         }
 
@@ -65,7 +72,7 @@ fun Application.configureSockets() {
             
             // Log when a user connects to signaling
             println("User $userId connected to Signaling WebSocket")
-            userSessions[userId] = this
+            signalingSessions[userId] = this
 
             try {
                 for (frame in incoming) {
@@ -75,19 +82,19 @@ fun Application.configureSockets() {
                         
                         val message = Json.decodeFromString<SignalingMessage>(text)
                         
-                        // FIX: Ensure we don't send the message back to the sender
-                        if (message.receiverId == userId) {
-                            println("WARNING: Dropping loopback message for $userId")
+                        // Loopback Protection: Never route a message back to the sender
+                        if (message.receiverId == userId || message.senderId == message.receiverId) {
+                            println("WARNING: Dropping loopback message from $userId to ${message.receiverId}")
                             continue
                         }
 
                         // Route to receiver
-                        val receiverSession = userSessions[message.receiverId]
+                        val receiverSession = signalingSessions[message.receiverId]
                         if (receiverSession != null) {
-                            println("Routing signaling from $userId to ${message.receiverId}")
+                            println("Routing [${message.type}] from $userId to ${message.receiverId}")
                             receiverSession.send(Frame.Text(text))
                         } else {
-                            println("Receiver ${message.receiverId} is not connected to signaling")
+                            println("Receiver ${message.receiverId} is OFFLINE (Signaling)")
                         }
                     }
                 }
@@ -95,7 +102,7 @@ fun Application.configureSockets() {
                 println("Error in Signaling for $userId: ${e.message}")
             } finally {
                 println("User $userId disconnected from Signaling")
-                userSessions.remove(userId)
+                signalingSessions.remove(userId)
             }
         }
 
@@ -136,6 +143,6 @@ suspend fun broadcastPresence(userId: String, status: String) {
     
     // Broadcast to all of the user's contacts who are currently online
     contacts.forEach { contact ->
-        userSessions[contact.id]?.send(Frame.Text(jsonMessage))
+        presenceSessions[contact.id]?.send(Frame.Text(jsonMessage))
     }
 }

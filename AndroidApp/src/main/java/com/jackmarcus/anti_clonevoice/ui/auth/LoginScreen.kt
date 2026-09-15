@@ -1,6 +1,9 @@
 package com.jackmarcus.anti_clonevoice.ui.auth
 
+import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,7 +19,9 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.auth.PhoneAuthCredential
 import com.google.firebase.auth.PhoneAuthOptions
 import com.google.firebase.auth.PhoneAuthProvider
+import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.models.LoginRequest
+import com.jackmarcus.anti_clonevoice.ui.common.BackendSettingsDialog
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 
@@ -30,12 +35,21 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
     var otpCode by remember { mutableStateOf("") }
+    var showBackendSettings by remember { mutableStateOf(false) }
     
     val authState by viewModel.authState.collectAsState()
     val context = LocalContext.current
-    val activity = context as? androidx.activity.ComponentActivity
+    val secureStorage = remember { SecureStorage(context) }
+    val activity = context as? ComponentActivity
     val scope = rememberCoroutineScope()
     val credentialManager = CredentialManager.create(context)
+
+    if (showBackendSettings) {
+        BackendSettingsDialog(
+            secureStorage = secureStorage,
+            onDismiss = { showBackendSettings = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -44,7 +58,17 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Login", style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Login", style = MaterialTheme.typography.headlineMedium)
+            IconButton(onClick = { showBackendSettings = true }) {
+                Icon(Icons.Default.Settings, contentDescription = "Backend Settings")
+            }
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
         
         TextField(

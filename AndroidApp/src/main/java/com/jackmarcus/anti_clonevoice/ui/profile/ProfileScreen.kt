@@ -1,12 +1,19 @@
 package com.jackmarcus.anti_clonevoice.ui.profile
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.jackmarcus.anti_clonevoice.data.Config
+import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.ui.auth.AuthViewModel
+import com.jackmarcus.anti_clonevoice.ui.common.BackendSettingsDialog
 
 @Composable
 fun ProfileScreen(
@@ -15,13 +22,23 @@ fun ProfileScreen(
     onNavigateToContacts: () -> Unit
 ) {
     val profileState by viewModel.profileState.collectAsState()
+    val context = LocalContext.current
+    val secureStorage = remember { SecureStorage(context) }
     
     var isEditing by remember { mutableStateOf(false) }
     var newUsername by remember { mutableStateOf("") }
     var newAvatarUrl by remember { mutableStateOf("") }
+    var showBackendSettings by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.getProfile()
+    }
+
+    if (showBackendSettings) {
+        BackendSettingsDialog(
+            secureStorage = secureStorage,
+            onDismiss = { showBackendSettings = false }
+        )
     }
 
     Column(
@@ -31,7 +48,20 @@ fun ProfileScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Profile", style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Profile", style = MaterialTheme.typography.headlineMedium)
+            IconButton(onClick = { showBackendSettings = true }) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Backend Settings"
+                )
+            }
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
         
         when (profileState) {
@@ -93,7 +123,7 @@ fun ProfileScreen(
                     Button(onClick = {
                         viewModel.logout()
                         onLogout()
-                    }) {
+                    }, colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)) {
                         Text("Logout")
                     }
                 }
@@ -101,8 +131,10 @@ fun ProfileScreen(
             is AuthViewModel.ProfileState.Error -> {
                 Text(
                     text = (profileState as AuthViewModel.ProfileState.Error).message,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center
                 )
+                Spacer(modifier = Modifier.height(16.dp))
                 Button(onClick = { viewModel.getProfile() }) {
                     Text("Retry")
                 }

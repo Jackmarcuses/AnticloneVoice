@@ -19,10 +19,10 @@ class ContactsTest {
 
     @Test
     fun testContactManagement() = testApplication {
-        UserDatabase.clear()
         application {
-            module()
+            module(isTest = true)
         }
+        UserDatabase.clear()
         val client = createClient {
             install(ContentNegotiation) {
                 json()
@@ -71,10 +71,10 @@ class ContactsTest {
 
     @Test
     fun testSignalingRouting() = testApplication {
-        UserDatabase.clear()
         application {
-            module()
+            module(isTest = true)
         }
+        UserDatabase.clear()
 
         val user1Id = "user1"
         val user2Id = "user2"

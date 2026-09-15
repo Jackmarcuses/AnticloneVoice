@@ -4,6 +4,7 @@ import android.util.Log
 import com.jackmarcus.anti_clonevoice.data.Config
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.ChatService
+import com.jackmarcus.anti_clonevoice.data.remote.NetworkClient
 import com.jackmarcus.anti_clonevoice.data.remote.models.ChatMessagePayload
 import com.jackmarcus.anti_clonevoice.data.remote.models.Message
 import kotlinx.coroutines.channels.BufferOverflow
@@ -15,10 +16,11 @@ import kotlinx.serialization.json.Json
 import okhttp3.*
 
 class ChatRepository(
-    private val chatService: ChatService,
     private val secureStorage: SecureStorage,
-    private val okHttpClient: OkHttpClient
+    private val okHttpClient: OkHttpClient,
+    private val injectedChatService: ChatService? = null
 ) {
+    private val chatService get() = injectedChatService ?: NetworkClient.chatService
     private var webSocket: WebSocket? = null
     private val TAG = "ChatRepository"
 

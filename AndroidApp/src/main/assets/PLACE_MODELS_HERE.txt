@@ -1,0 +1,5 @@
+Put your .tflite model files in this folder.
+Rename them to:
+1. voice_deepfake_detector.tflite
+2. speaker_recognition.tflite
+3. wav2vec2_quantized.tflite

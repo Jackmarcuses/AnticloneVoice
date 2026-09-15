@@ -2,6 +2,7 @@ package com.jackmarcus.anti_clonevoice.data.repository
 
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.AuthService
+import com.jackmarcus.anti_clonevoice.data.remote.NetworkClient
 import com.jackmarcus.anti_clonevoice.data.remote.models.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
@@ -12,9 +13,10 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
 
 class AuthRepository(
-    private val authService: AuthService,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val injectedAuthService: AuthService? = null
 ) {
+    private val authService get() = injectedAuthService ?: NetworkClient.authService
     private val firebaseAuth = FirebaseAuth.getInstance()
 
     suspend fun signup(request: SignupRequest, otp: String): Result<AuthResponse> {

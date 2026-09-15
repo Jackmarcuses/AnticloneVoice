@@ -21,7 +21,7 @@ class ContactsRepositoryTest {
 
     @Before
     fun setup() {
-        repository = ContactsRepository(service, storage)
+        repository = ContactsRepository(storage, service)
         every { storage.getToken() } returns "fake_token"
     }
 

@@ -47,6 +47,22 @@ class SecureStorage(context: Context) {
         return sharedPreferences?.getString("user_id", null)
     }
 
+    fun saveProductionMode(isProduction: Boolean) {
+        sharedPreferences?.edit()?.putBoolean("is_production", isProduction)?.apply()
+    }
+
+    fun isProductionMode(): Boolean {
+        return sharedPreferences?.getBoolean("is_production", false) ?: false
+    }
+
+    fun saveLocalIp(ip: String) {
+        sharedPreferences?.edit()?.putString("local_ip", ip)?.apply()
+    }
+
+    fun getLocalIp(): String {
+        return sharedPreferences?.getString("local_ip", "10.89.42.62") ?: "10.89.42.62"
+    }
+
     fun clearToken() {
         sharedPreferences?.edit()?.remove("auth_token")?.remove("user_id")?.apply()
     }

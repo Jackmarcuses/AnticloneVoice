@@ -19,18 +19,55 @@ object NetworkClient {
         .connectTimeout(60, TimeUnit.SECONDS) // Increased to 60s for Render cold start
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
+        .pingInterval(10, TimeUnit.SECONDS) // Keep WebSockets alive on cloud load balancers (Render)
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })
         .build()
 
-    val retrofit: Retrofit = Retrofit.Builder()
-        .baseUrl(Config.BASE_URL)
-        .client(okHttpClient)
-        .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
-        .build()
+    private var currentRetrofit: Retrofit? = null
+    private var currentBaseUrl: String? = null
 
-    val authService: AuthService = retrofit.create(AuthService::class.java)
-    val contactsService: ContactsService = retrofit.create(ContactsService::class.java)
-    val chatService: ChatService = retrofit.create(ChatService::class.java)
+    val retrofit: Retrofit
+        get() {
+            val url = Config.BASE_URL
+            if (currentRetrofit == null || currentBaseUrl != url) {
+                currentBaseUrl = url
+                currentRetrofit = Retrofit.Builder()
+                    .baseUrl(url)
+                    .client(okHttpClient)
+                    .addConverterFactory(json.asConverterFactory("application/json".toMediaType()))
+                    .build()
+                
+                // Clear cached services
+                _authService = null
+                _contactsService = null
+                _chatService = null
+            }
+            return currentRetrofit!!
+        }
+
+    private var _authService: AuthService? = null
+    val authService: AuthService get() {
+        if (_authService == null) _authService = retrofit.create(AuthService::class.java)
+        return _authService!!
+    }
+
+    private var _contactsService: ContactsService? = null
+    val contactsService: ContactsService get() {
+        if (_contactsService == null) _contactsService = retrofit.create(ContactsService::class.java)
+        return _contactsService!!
+    }
+
+    private var _chatService: ChatService? = null
+    val chatService: ChatService get() {
+        if (_chatService == null) _chatService = retrofit.create(ChatService::class.java)
+        return _chatService!!
+    }
+
+    private var _transcriptService: TranscriptService? = null
+    val transcriptService: TranscriptService get() {
+        if (_transcriptService == null) _transcriptService = retrofit.create(TranscriptService::class.java)
+        return _transcriptService!!
+    }
 }

@@ -2,6 +2,7 @@ package com.jackmarcus.anti_clonevoice.ui.call
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.RingtoneManager
@@ -96,8 +97,25 @@ class CallAudioManager(private val context: Context) {
     }
 
     fun setCommunicationMode() {
+        Log.d(TAG, "Activating Communication Mode")
         audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
         audioManager.isSpeakerphoneOn = true
+        
+        // Request Audio Focus
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val focusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                )
+                .build()
+            audioManager.requestAudioFocus(focusRequest)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(null, AudioManager.STREAM_VOICE_CALL, AudioManager.AUDIOFOCUS_GAIN)
+        }
     }
 
     fun setSpeakerphoneOn(on: Boolean) {

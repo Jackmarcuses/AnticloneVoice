@@ -22,9 +22,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.util.Locale
 
 @Composable
 fun CallScreen(
@@ -37,6 +39,11 @@ fun CallScreen(
     val isSpeakerOn by viewModel.isSpeakerOn.collectAsState()
     val audioLevel by viewModel.remoteAudioLevel.collectAsState()
     val duration by viewModel.callDuration.collectAsState()
+    val riskScore by viewModel.riskScore.collectAsState()
+    val detectionMessage by viewModel.detectionMessage.collectAsState()
+    val threatLevel by viewModel.threatLevel.collectAsState()
+    val liveTranscript by viewModel.liveTranscript.collectAsState()
+    val detectedLanguage by viewModel.detectedLanguage.collectAsState()
 
     fun formatDuration(seconds: Long): String {
         val mins = seconds / 60
@@ -83,8 +90,10 @@ fun CallScreen(
                 text = when(callState) {
                     CallState.DIALING -> "Calling..."
                     CallState.RINGING -> "Incoming Call..."
+                    CallState.CONNECTING -> "Connecting..."
                     CallState.CONNECTED -> formatDuration(duration)
                     CallState.FAILED -> "Call Failed"
+                    CallState.ENDED -> "Call Ended"
                     else -> ""
                 },
                 color = Color.White.copy(alpha = 0.9f),
@@ -92,7 +101,21 @@ fun CallScreen(
             )
 
             if (callState == CallState.CONNECTED) {
-                Spacer(modifier = Modifier.height(64.dp))
+                Spacer(modifier = Modifier.height(32.dp))
+                RiskDashboard(score = riskScore, message = detectionMessage, level = threatLevel)
+                
+                if (liveTranscript.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TranscriptView(transcript = liveTranscript, language = detectedLanguage)
+                } else {
+                    // Show a small test button if no transcript is present
+                    Spacer(modifier = Modifier.height(16.dp))
+                    TextButton(onClick = { viewModel.simulateHindiScam() }) {
+                        Text("Test Hindi Scam Detection", color = Color.White.copy(alpha = 0.3f))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
                 VoiceVisualizer(level = audioLevel)
             }
 
@@ -144,6 +167,82 @@ fun CallScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+fun RiskDashboard(score: Float, message: String, level: String) {
+    val color = when(level) {
+        "CRITICAL" -> Color(0xFFEA0038)
+        "SUSPICIOUS" -> Color(0xFFFFC107)
+        else -> Color(0xFF25D366)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Color.Black.copy(alpha = 0.3f))
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            text = message,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            fontSize = 18.sp
+        )
+        Spacer(modifier = Modifier.height(8.dp))
+        LinearProgressIndicator(
+            progress = { score / 100f },
+            modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+            color = color,
+            trackColor = Color.White.copy(alpha = 0.2f)
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "Trust Risk Score: ${String.format(Locale.US, "%.1f", score)}%",
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+fun TranscriptView(transcript: String, language: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White.copy(alpha = 0.1f))
+            .padding(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = "LIVE TRANSCRIPT",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = "LANG: ${language.uppercase()}",
+                color = Color.White.copy(alpha = 0.5f),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = "\"$transcript\"",
+            color = Color.White,
+            fontSize = 14.sp,
+            fontStyle = FontStyle.Italic
+        )
     }
 }
 

@@ -9,7 +9,10 @@ data class User(
     val passwordHash: String,
     val email: String,
     val avatarUrl: String = "",
-    val contacts: List<String> = emptyList()
+    val contacts: List<String> = emptyList(),
+    val voiceEmbedding: String? = null,
+    val baselineSpeechRate: Float = 0.0f,
+    val pitchVariance: Float = 0.0f
 )
 
 @Serializable
@@ -42,7 +45,10 @@ data class ProfileResponse(
 data class ContactResponse(
     val userId: String,
     val username: String,
-    val isOnline: Boolean
+    val isOnline: Boolean,
+    val voiceEmbedding: String? = null,
+    val baselineSpeechRate: Float = 0.0f,
+    val pitchVariance: Float = 0.0f
 )
 
 @Serializable
@@ -65,6 +71,13 @@ data class UpdateProfileRequest(
 @Serializable
 data class MessageResponse(
     val message: String
+)
+
+@Serializable
+data class UpdateVoiceProfileRequest(
+    val voiceEmbedding: String,
+    val baselineSpeechRate: Float,
+    val pitchVariance: Float
 )
 
 @Serializable

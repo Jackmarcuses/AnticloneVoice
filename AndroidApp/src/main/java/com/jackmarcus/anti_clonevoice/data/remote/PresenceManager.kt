@@ -10,6 +10,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.json.Json
 import okhttp3.*
+import java.util.Timer
+import java.util.TimerTask
 import java.util.concurrent.TimeUnit
 
 class PresenceManager(
@@ -51,12 +53,25 @@ class PresenceManager(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.w(TAG, "Presence WebSocket Closed: $reason")
+                reconnect()
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Presence WebSocket Failure: ${t.message}")
+                reconnect()
             }
         })
+    }
+
+    private fun reconnect() {
+        Log.d(TAG, "Scheduling Presence Reconnect...")
+        // Reconnect after 3 seconds
+        val timer = Timer()
+        timer.schedule(object : TimerTask() {
+            override fun run() {
+                connect()
+            }
+        }, 3000)
     }
 
     fun disconnect() {

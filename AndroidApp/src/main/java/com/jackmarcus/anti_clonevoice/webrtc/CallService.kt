@@ -36,19 +36,19 @@ class CallService : Service() {
         
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // Use only MICROPHONE type to avoid issues with PHONE_CALL requirements on some devices
                 startForeground(
                     NOTIFICATION_ID, 
                     notification, 
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE or ServiceInfo.FOREGROUND_SERVICE_TYPE_PHONE_CALL
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
                 )
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
         } catch (e: Exception) {
             Log.e("CallService", "Failed to start foreground service: ${e.message}")
-            // If it fails, we still want to show the notification if possible or stop self
+            // Fallback for Android 12+ background start restrictions
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // On Android 12+, we can't start foreground from background in some cases
                 stopSelf()
             }
         }

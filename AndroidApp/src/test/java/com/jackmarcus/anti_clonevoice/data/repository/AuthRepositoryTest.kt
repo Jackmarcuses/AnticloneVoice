@@ -15,7 +15,7 @@ import retrofit2.Response
 class AuthRepositoryTest {
     private val authService = mockk<AuthService>()
     private val secureStorage = mockk<SecureStorage>(relaxed = true)
-    private val repository = AuthRepository(authService, secureStorage)
+    private val repository = AuthRepository(secureStorage, authService)
 
     @Test
     fun `login success stores token`() = runTest {

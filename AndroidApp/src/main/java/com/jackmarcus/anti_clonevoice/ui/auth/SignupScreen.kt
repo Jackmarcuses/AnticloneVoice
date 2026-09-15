@@ -2,6 +2,7 @@ package com.jackmarcus.anti_clonevoice.ui.auth
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -16,7 +17,9 @@ import androidx.credentials.CredentialManager
 import androidx.credentials.GetCredentialRequest
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.models.SignupRequest
+import com.jackmarcus.anti_clonevoice.ui.common.BackendSettingsDialog
 import kotlinx.coroutines.launch
 
 @Composable
@@ -32,17 +35,26 @@ fun SignupScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isOtpSent by remember { mutableStateOf(false) }
+    var showBackendSettings by remember { mutableStateOf(false) }
 
     val authState by viewModel.authState.collectAsState()
+    val context = LocalContext.current
+    val secureStorage = remember { SecureStorage(context) }
 
     LaunchedEffect(authState) {
         if (authState is AuthViewModel.AuthState.OtpSent) {
             isOtpSent = true
         }
     }
-    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val credentialManager = CredentialManager.create(context)
+
+    if (showBackendSettings) {
+        BackendSettingsDialog(
+            secureStorage = secureStorage,
+            onDismiss = { showBackendSettings = false }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -51,7 +63,17 @@ fun SignupScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Text(text = "Signup", style = MaterialTheme.typography.headlineMedium)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(text = "Signup", style = MaterialTheme.typography.headlineMedium)
+            IconButton(onClick = { showBackendSettings = true }) {
+                Icon(Icons.Default.Settings, contentDescription = "Backend Settings")
+            }
+        }
+        
         Spacer(modifier = Modifier.height(16.dp))
 
         if (!isOtpSent) {

@@ -34,6 +34,7 @@ dependencies {
     testImplementation(libs.ktor.client.negotiation)
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
+    testImplementation(libs.h2)
 }
 
 application {

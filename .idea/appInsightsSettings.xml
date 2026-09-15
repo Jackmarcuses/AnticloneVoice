@@ -6,14 +6,6 @@
         <entry key="Firebase Crashlytics">
           <value>
             <InsightsFilterSettings>
-              <option name="connection">
-                <ConnectionSetting>
-                  <option name="appId" value="com.jackmarcus.anti_clonevoice" />
-                  <option name="mobileSdkAppId" value="1:68309335150:android:99b42511717ebee789fa7f" />
-                  <option name="projectId" value="anti-voice-clone" />
-                  <option name="projectNumber" value="68309335150" />
-                </ConnectionSetting>
-              </option>
               <option name="signal" value="SIGNAL_UNSPECIFIED" />
               <option name="timeIntervalDays" value="THIRTY_DAYS" />
               <option name="visibilityType" value="ALL" />

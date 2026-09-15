@@ -33,6 +33,11 @@ android {
     buildFeatures {
         compose = true
     }
+    
+    // Prevent compression of model file in assets to avoid memory-map crashes
+    androidResources {
+        noCompress.add("tflite")
+    }
 }
 
 dependencies {
@@ -58,8 +63,11 @@ dependencies {
     implementation(libs.androidx.security.crypto)
 
     // Navigation
-    implementation(libs.androidx.navigation.compose)
     implementation(libs.google.webrtc)
+    
+    // TensorFlow Lite Inference Engine for Anti-Spoofing AI Models
+    implementation(libs.tensorflow.lite)
+    implementation(libs.androidx.navigation.compose)
 
     // Firebase & Google Sign-In
     implementation(platform(libs.firebase.bom))
@@ -68,6 +76,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
+    implementation(libs.google.mlkit.language.id)
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)

@@ -15,8 +15,19 @@ object UserDatabase {
         passwordHash = row[Users.passwordHash],
         email = row[Users.email],
         avatarUrl = row[Users.avatarUrl],
-        contacts = emptyList() // Contacts are loaded separately via getContacts
+        contacts = emptyList(), // Contacts are loaded separately via getContacts
+        voiceEmbedding = row[Users.voiceEmbedding],
+        baselineSpeechRate = row[Users.baselineSpeechRate],
+        pitchVariance = row[Users.pitchVariance]
     )
+
+    suspend fun clear() = DatabaseFactory.dbQuery {
+        onlineUsers.clear()
+        tempOtps.clear()
+        Contacts.deleteAll()
+        Messages.deleteAll()
+        Users.deleteAll()
+    }
 
     fun saveOtp(email: String, code: String) {
         tempOtps[email] = code
@@ -80,6 +91,19 @@ object UserDatabase {
         Users.update({ Users.id eq userId }) {
             if (username != null) it[Users.username] = username
             if (avatarUrl != null) it[Users.avatarUrl] = avatarUrl
+        } > 0
+    }
+
+    suspend fun updateVoiceProfile(
+        userId: String,
+        embedding: String,
+        speechRate: Float,
+        variance: Float
+    ): Boolean = DatabaseFactory.dbQuery {
+        Users.update({ Users.id eq userId }) {
+            it[voiceEmbedding] = embedding
+            it[baselineSpeechRate] = speechRate
+            it[pitchVariance] = variance
         } > 0
     }
 

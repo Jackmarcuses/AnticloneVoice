@@ -2,12 +2,15 @@ package com.jackmarcus.anti_clonevoice.data.repository
 
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.ContactsService
+import com.jackmarcus.anti_clonevoice.data.remote.NetworkClient
 import com.jackmarcus.anti_clonevoice.data.remote.models.*
 
 class ContactsRepository(
-    private val contactsService: ContactsService,
-    private val secureStorage: SecureStorage
+    private val secureStorage: SecureStorage,
+    private val injectedContactsService: ContactsService? = null
 ) {
+    private val contactsService get() = injectedContactsService ?: NetworkClient.contactsService
+
     suspend fun getContacts(): Result<List<ContactResponse>> {
         val token = secureStorage.getToken() ?: return Result.failure(Exception("No token found"))
         return try {

@@ -14,10 +14,10 @@ import com.jackmarcus.backend.database.UserDatabase
 class ApplicationTest {
     @Test
     fun testSignup() = testApplication {
-        UserDatabase.clear()
         application {
-            module()
+            module(isTest = true)
         }
+        UserDatabase.clear()
         val client = createClient {
             install(ContentNegotiation) {
                 json()
@@ -37,10 +37,10 @@ class ApplicationTest {
 
     @Test
     fun testLogin() = testApplication {
-        UserDatabase.clear()
         application {
-            module()
+            module(isTest = true)
         }
+        UserDatabase.clear()
         val client = createClient {
             install(ContentNegotiation) {
                 json()

@@ -19,10 +19,10 @@ fun main() {
         .start(wait = true)
 }
 
-fun Application.module() {
+fun Application.module(isTest: Boolean = false) {
     val logger = LoggerFactory.getLogger("Application")
-    logger.info("Initializing Application modules...")
-    DatabaseFactory.init()
+    logger.info("Initializing Application modules (isTest=$isTest)...")
+    DatabaseFactory.init(isTest)
     configureFirebaseAdmin()
     configureSerialization()
     configureSecurity()

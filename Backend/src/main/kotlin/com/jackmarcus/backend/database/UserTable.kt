@@ -8,6 +8,9 @@ object Users : Table("users") {
     val email = varchar("email", 128)
     val passwordHash = varchar("password_hash", 256)
     val avatarUrl = varchar("avatar_url", 512).default("")
+    val voiceEmbedding = text("voice_embedding").nullable()
+    val baselineSpeechRate = float("baseline_speech_rate").default(0.0f)
+    val pitchVariance = float("pitch_variance").default(0.0f)
 
     override val primaryKey = PrimaryKey(id)
 }

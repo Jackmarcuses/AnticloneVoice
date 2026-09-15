@@ -19,12 +19,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.jackmarcus.anti_clonevoice.data.Config
 import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jackmarcus.anti_clonevoice.data.remote.NetworkClient
 import com.jackmarcus.anti_clonevoice.data.remote.PresenceManager
 import com.jackmarcus.anti_clonevoice.data.repository.AuthRepository
 import com.jackmarcus.anti_clonevoice.data.repository.ChatRepository
 import com.jackmarcus.anti_clonevoice.data.repository.ContactsRepository
+import com.jackmarcus.anti_clonevoice.data.repository.TranscriptRepository
 import com.jackmarcus.anti_clonevoice.ui.auth.AuthViewModel
 import com.jackmarcus.anti_clonevoice.ui.auth.LoginScreen
 import com.jackmarcus.anti_clonevoice.ui.auth.SignupScreen
@@ -39,6 +41,7 @@ import com.jackmarcus.anti_clonevoice.ui.profile.ProfileScreen
 import com.jackmarcus.anti_clonevoice.ui.theme.AnticloneVoiceTheme
 import com.jackmarcus.anti_clonevoice.webrtc.SignalingClient
 import okhttp3.OkHttpClient
+import java.util.concurrent.TimeUnit
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
@@ -83,18 +86,31 @@ class MainActivity : ComponentActivity() {
 
         // Manual Dependency Injection with Error Handling
         val secureStorage = SecureStorage(applicationContext)
-        val authRepository = AuthRepository(NetworkClient.authService, secureStorage)
+        
+        // Initialize Config from storage
+        Config.isProduction = secureStorage.isProductionMode()
+        Config.localIp = secureStorage.getLocalIp()
+        
+        val authRepository = AuthRepository(secureStorage)
         val authViewModel = AuthViewModel(authRepository)
         
-        val contactsRepository = ContactsRepository(NetworkClient.contactsService, secureStorage)
-        val presenceManager = PresenceManager(secureStorage, OkHttpClient())
+        // Create a singular shared OkHttpClient configuration that implements keep-alives and timeouts
+        val sharedClient = OkHttpClient.Builder()
+            .connectTimeout(60, TimeUnit.SECONDS)
+            .readTimeout(60, TimeUnit.SECONDS)
+            .writeTimeout(60, TimeUnit.SECONDS)
+            .pingInterval(10, TimeUnit.SECONDS) // Active ping keeps pipes open on Render free instances
+            .build()
+            
+        val contactsRepository = ContactsRepository(secureStorage)
+        val presenceManager = PresenceManager(secureStorage, sharedClient)
         val contactsViewModel = ContactsViewModel(contactsRepository, presenceManager)
         
-        val okHttpClient = OkHttpClient()
-        val signalingClient = SignalingClient(okHttpClient)
-        callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage)
+        val signalingClient = SignalingClient(sharedClient)
+        val transcriptRepository = TranscriptRepository()
+        callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage, contactsRepository, transcriptRepository)
         
-        val chatRepository = ChatRepository(NetworkClient.chatService, secureStorage, okHttpClient)
+        val chatRepository = ChatRepository(secureStorage, sharedClient)
         val chatViewModel = ChatViewModel(chatRepository, secureStorage)
 
         handleIntent(intent, callViewModel)
@@ -159,7 +175,7 @@ fun MainApp(
     
     // Auto-navigate to call screen for incoming calls or when dialing
     LaunchedEffect(callState) {
-        if (callState == CallState.RINGING || callState == CallState.DIALING) {
+        if (callState == CallState.RINGING || callState == CallState.DIALING || callState == CallState.CONNECTING) {
             // Check if we are already on the call screen to avoid duplicate navigation
             if (navController.currentBackStackEntry?.destination?.route != "call") {
                 navController.navigate("call")
@@ -177,6 +193,9 @@ fun MainApp(
                     popUpTo(0)
                 }
             }
+        } else if (authViewModel.isLoggedIn()) {
+            // Ensure signaling is connected whenever user is logged in
+            callViewModel.connectSignaling()
         }
     }
     
