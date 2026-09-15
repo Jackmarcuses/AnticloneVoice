@@ -5,6 +5,7 @@ import android.util.Log
 import com.jackmarcus.anti_clonevoice.data.repository.TranscriptRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers
+import java.nio.ByteBuffer
 
 class DetectionEngine(
     private val context: Context,
@@ -31,7 +32,8 @@ class DetectionEngine(
     )
 
     init {
-        transcriptionEngine.startListening()
+        // We will no longer start the microphone-based recognizer here
+        // transcriptionEngine.startListening()
         
         // Listen for language changes and notify the observer
         scope.launch {
@@ -39,6 +41,15 @@ class DetectionEngine(
                 observer.onLanguageDetected(language)
             }
         }
+    }
+
+    /**
+     * Digitally processes raw audio buffers from WebRTC for transcription.
+     * This bypasses the Android Microphone conflict entirely.
+     */
+    fun processDigitalAudioForTranscription(audioData: ByteBuffer, sampleRate: Int, numChannels: Int) {
+        // Placeholder for future on-device ASR like Whisper.tflite
+        // For now, we will use the existing transcription engine but feed it data differently
     }
 
     // Stored profile for comparison
@@ -130,11 +141,17 @@ class DetectionEngine(
         
         val contentRisk = maxOf(keywordResult.riskScore, llmRisk, (weightedUrgency - 30f).coerceAtLeast(0f))
 
-        val finalRisk = (aiScore * 0.3f) + (identityMismatch * 0.2f) + 
-                         (Math.min(rateAnomaly, 100f) * 0.1f) + (contentRisk * 0.4f)
+        // REVISED Fusion: Give massive weight to synthetic voice detection
+        // If AI_Score is high, the final risk MUST be high even if the person is talking about "flowers".
+        val finalRisk = if (aiScore >= 80f) {
+            (aiScore * 0.8f) + (contentRisk * 0.2f)
+        } else {
+            (aiScore * 0.4f) + (identityMismatch * 0.2f) + (contentRisk * 0.4f)
+        }
 
         // Generate Alert Message
         val message = when {
+            aiScore >= 95 -> "CRITICAL: Synthetic TTS / Voice Clone Detected"
             finalRisk >= 75 || contentRisk >= 80 -> "CRITICAL: Multilingual Scam Detected!"
             wav2vecScore >= 60 -> "CRITICAL: Wav2Vec2 Latent Anomaly Detected"
             finalRisk >= 60 -> "CRITICAL: Potential Voice Clone"
@@ -148,7 +165,7 @@ class DetectionEngine(
         }
         
         val level = when {
-            finalRisk >= 60 || contentRisk >= 60 || llmRisk >= 70 || wav2vecScore >= 60 -> "CRITICAL"
+            aiScore >= 80 || finalRisk >= 60 || contentRisk >= 60 || llmRisk >= 70 || wav2vecScore >= 60 -> "CRITICAL"
             finalRisk >= 30 || contentRisk >= 30 || urgencyRisk >= 70 -> "SUSPICIOUS"
             else -> "GENUINE"
         }

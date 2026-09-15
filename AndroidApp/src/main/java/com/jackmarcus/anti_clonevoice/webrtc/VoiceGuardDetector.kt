@@ -175,14 +175,18 @@ class VoiceGuardDetector {
             val standardDeviation = sqrt(varianceSum / activeSubFrames)
             val jitter = (standardDeviation / meanF0).toFloat() // Normalized coefficient
 
-            // Check against rigid synthetic pitch grids or robotic vocoder phase glitches
-            if (jitter < 0.02f) {
-                jitterAnomaly = 100.0f // Pure synthetic robot pitch stability
-            } else if (jitter > 0.30f) {
-                jitterAnomaly = 80.0f  // Phase generation artifact jitter spike
+            // GOOGLE TRANSLATE / BASIC TTS DETECTION:
+            // Natural human speech ALWAYS has small variations (jitter).
+            // Basic TTS engines (like Google Translate) often have "perfectly flat" pitch in short windows.
+            if (jitter < 0.005f) {
+                jitterAnomaly = 100.0f // Absolute synthetic flatness detected
+            } else if (jitter < 0.015f) {
+                jitterAnomaly = 85.0f  // Very high probability of high-end TTS
+            } else if (jitter > 0.35f) {
+                jitterAnomaly = 90.0f  // Phase generation artifact / Vocoder glitch
             } else {
                 // Scale linearly into safer ranges
-                jitterAnomaly = (jitter / 0.30f) * 20.0f
+                jitterAnomaly = (jitter / 0.35f) * 15.0f
             }
         } else {
             // Unpitched or unvoiced sounds

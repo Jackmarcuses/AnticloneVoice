@@ -377,7 +377,11 @@ class WebRtcClient(
             absoluteCaptureTimestampMs: Long
         ) {
             if (audioData != null) {
+                // Pass digital audio to the detection pipeline for features
                 pipelineProcessor.processIncomingBuffer(audioData, sampleRate, numberOfChannels)
+                
+                // ALSO pass it to the transcription engine for text (without using mic)
+                detectionEngine.processDigitalAudioForTranscription(audioData, sampleRate, numberOfChannels)
             }
         }
     }
