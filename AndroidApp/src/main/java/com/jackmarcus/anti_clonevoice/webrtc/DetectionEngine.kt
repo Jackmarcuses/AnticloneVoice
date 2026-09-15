@@ -60,6 +60,11 @@ class DetectionEngine(
     fun updateTranscript(text: String) {
         lastTranscript = text
         observer.onTranscriptUpdated(text)
+        
+        // Push every new sentence to the database immediately for "Real-time" viewing
+        scope.launch(Dispatchers.IO) {
+            transcriptRepository.saveParagraph(text, llmAnalyzer.detectedLanguage.value)
+        }
     }
 
     /**

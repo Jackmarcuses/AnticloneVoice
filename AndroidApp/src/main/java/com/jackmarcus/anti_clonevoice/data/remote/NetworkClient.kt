@@ -1,6 +1,7 @@
 package com.jackmarcus.anti_clonevoice.data.remote
 
 import com.jackmarcus.anti_clonevoice.data.Config
+import com.jackmarcus.anti_clonevoice.data.local.SecureStorage
 import com.jakewharton.retrofit2.converter.kotlinx.serialization.asConverterFactory
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -15,11 +16,24 @@ object NetworkClient {
         isLenient = true
     }
 
+    private var secureStorage: SecureStorage? = null
+
+    fun init(storage: SecureStorage) {
+        this.secureStorage = storage
+    }
+
     private val okHttpClient = OkHttpClient.Builder()
-        .connectTimeout(60, TimeUnit.SECONDS) // Increased to 60s for Render cold start
+        .connectTimeout(60, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
         .writeTimeout(60, TimeUnit.SECONDS)
-        .pingInterval(10, TimeUnit.SECONDS) // Keep WebSockets alive on cloud load balancers (Render)
+        .pingInterval(10, TimeUnit.SECONDS)
+        .addInterceptor { chain ->
+            val requestBuilder = chain.request().newBuilder()
+            secureStorage?.getToken()?.let { token ->
+                requestBuilder.addHeader("Authorization", "Bearer $token")
+            }
+            chain.proceed(requestBuilder.build())
+        }
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY
         })

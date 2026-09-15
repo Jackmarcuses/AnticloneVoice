@@ -13,5 +13,6 @@ object TranscriptDatabase {
                 it[Transcripts.timestamp] = System.currentTimeMillis()
             }
         }
+        println("Saved transcript for user $userId: $content ($language)")
     }
 }

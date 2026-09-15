@@ -86,6 +86,7 @@ class MainActivity : ComponentActivity() {
 
         // Manual Dependency Injection with Error Handling
         val secureStorage = SecureStorage(applicationContext)
+        NetworkClient.init(secureStorage)
         
         // Initialize Config from storage
         Config.isProduction = secureStorage.isProductionMode()

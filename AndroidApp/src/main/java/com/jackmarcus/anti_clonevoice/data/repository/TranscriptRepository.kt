@@ -15,9 +15,10 @@ class TranscriptRepository(
         return try {
             val response = transcriptService.saveTranscript(TranscriptRequest(content, language))
             if (response.isSuccessful) {
+                Log.d(TAG, "Transcript saved to Supabase successfully: $content")
                 Result.success(Unit)
             } else {
-                Log.e(TAG, "Failed to save transcript: ${response.code()}")
+                Log.e(TAG, "Failed to save transcript: ${response.code()} | ${response.errorBody()?.string()}")
                 Result.failure(Exception("API Error: ${response.code()}"))
             }
         } catch (e: Exception) {
