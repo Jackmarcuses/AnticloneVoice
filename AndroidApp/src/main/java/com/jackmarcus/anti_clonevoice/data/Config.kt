@@ -2,7 +2,7 @@ package com.jackmarcus.anti_clonevoice.data
 
 object Config {
     // Dynamically switchable at runtime
-    var isProduction: Boolean = false
+    var isProduction: Boolean = true
     
     private const val PRODUCTION_HOST = "anticlonevoice.onrender.com"
     

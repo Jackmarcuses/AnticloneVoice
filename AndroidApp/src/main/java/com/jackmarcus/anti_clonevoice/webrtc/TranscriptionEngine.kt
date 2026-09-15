@@ -88,6 +88,7 @@ class TranscriptionEngine(
             val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
             if (!matches.isNullOrEmpty()) {
                 val text = matches[0]
+                Log.i(TAG, "Transcription Result: $text")
                 onTranscriptReady(text)
                 
                 // Final result usually completes a paragraph

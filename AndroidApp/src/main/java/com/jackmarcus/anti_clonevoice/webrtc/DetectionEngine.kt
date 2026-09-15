@@ -60,11 +60,6 @@ class DetectionEngine(
     fun updateTranscript(text: String) {
         lastTranscript = text
         observer.onTranscriptUpdated(text)
-        
-        // Push every new sentence to the database immediately for "Real-time" viewing
-        scope.launch(Dispatchers.IO) {
-            transcriptRepository.saveParagraph(text, llmAnalyzer.detectedLanguage.value)
-        }
     }
 
     /**
@@ -73,9 +68,12 @@ class DetectionEngine(
     fun analyzeIntent(paragraph: String) {
         llmAnalyzer.analyzeParagraph(paragraph)
         
-        // Save full paragraph to backend database
+        // Save full paragraph to backend database only when it's complete
         scope.launch(Dispatchers.IO) {
-            transcriptRepository.saveParagraph(paragraph, llmAnalyzer.detectedLanguage.value)
+            val language = llmAnalyzer.detectedLanguage.value
+            val langToSave = if (language == "detecting...") "Unknown" else language
+            Log.d(TAG, "Sending paragraph to DB ($langToSave): $paragraph")
+            transcriptRepository.saveParagraph(paragraph, langToSave)
         }
         
         Log.i(TAG, "Intent Layer Analysis: ${llmAnalyzer.scamIntentMessage.value ?: "Safe"}")
