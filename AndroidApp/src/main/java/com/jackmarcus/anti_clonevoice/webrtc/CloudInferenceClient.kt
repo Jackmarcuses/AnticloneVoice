@@ -13,18 +13,17 @@ import retrofit2.http.Header
 import retrofit2.http.POST
 
 interface HuggingFaceApi {
-    // Exact Meta Wav2Vec2 Model path on Hugging Face
+    // Exact Meta Wav2Vec2 Model path on Hugging Face (ASR version)
     @POST("models/facebook/wav2vec2-base-960h")
-    suspend fun analyzeAudio(
+    suspend fun transcribeAudio(
         @Header("Authorization") token: String,
         @Body audioData: RequestBody
-    ): List<ScamScoreResponse>
+    ): TranscriptionResponse
 }
 
 @Serializable
-data class ScamScoreResponse(
-    val label: String,
-    val score: Float
+data class TranscriptionResponse(
+    val text: String? = null
 )
 
 class CloudInferenceClient(private val apiKey: String) {
@@ -42,25 +41,21 @@ class CloudInferenceClient(private val apiKey: String) {
 
     private val api = retrofit.create(HuggingFaceApi::class.java)
 
-    suspend fun getExactScamScore(audioBytes: ByteArray): Float {
-        if (apiKey.isEmpty() || apiKey == "hf_placeholder_key") {
+    suspend fun getTranscription(audioBytes: ByteArray): String? {
+        if (apiKey.isEmpty() || apiKey == "hf_placeholder_key" || apiKey == "YOUR_KEY_HERE") {
             Log.w(TAG, "No valid Hugging Face API key provided")
-            return 0f
+            return null
         }
         
         return try {
             val requestBody = audioBytes.toRequestBody("audio/wav".toMediaType())
-            val response = api.analyzeAudio("Bearer $apiKey", requestBody)
+            val response = api.transcribeAudio("Bearer $apiKey", requestBody)
             
-            // Look for the "fake" or "scam" label score
-            val risk = response.find { it.label.lowercase().contains("fake") || it.label.lowercase().contains("scam") }?.score
-            val finalScore = (risk ?: 0f) * 100f
-            
-            Log.i(TAG, "Full Wav2Vec2 API Result: $finalScore%")
-            finalScore
+            Log.i(TAG, "Full Wav2Vec2 ASR Result: ${response.text}")
+            response.text
         } catch (e: Exception) {
-            Log.e(TAG, "Cloud Inference Failed: ${e.message}")
-            0f
+            Log.e(TAG, "Cloud Transcription Failed: ${e.message}")
+            null
         }
     }
 }

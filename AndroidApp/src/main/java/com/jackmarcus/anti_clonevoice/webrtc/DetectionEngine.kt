@@ -32,6 +32,7 @@ class DetectionEngine(
 
     private val whisperBuffer = mutableListOf<Float>()
     private val WHISPER_CHUNK_SIZE = 48000 // 3 seconds at 16kHz
+    private var isWhisperBusy = false
 
     init {
         // Listen for language changes and notify the observer
@@ -73,17 +74,19 @@ class DetectionEngine(
                     }
                 }
 
-                // Process in 3-second chunks
-                if (whisperBuffer.size >= WHISPER_CHUNK_SIZE) {
+                // Process in 3-second chunks only if the AI is not busy
+                if (whisperBuffer.size >= WHISPER_CHUNK_SIZE && !isWhisperBusy) {
+                    isWhisperBusy = true
                     val chunk = whisperBuffer.take(WHISPER_CHUNK_SIZE).toFloatArray()
-                    // Clear or slide buffer BEFORE launching coroutine to avoid rapid buildup
-                    whisperBuffer.subList(0, WHISPER_CHUNK_SIZE / 2).clear() // 50% overlap
+                    whisperBuffer.clear() // Clear buffer to prevent memory buildup
 
                     scope.launch(Dispatchers.Default) {
                         try {
                             whisperEngine.transcribe(chunk)
                         } catch (e: Exception) {
                             Log.e(TAG, "Whisper transcribe error: ${e.message}")
+                        } finally {
+                            isWhisperBusy = false
                         }
                     }
                 }
@@ -154,10 +157,15 @@ class DetectionEngine(
         // 6. Risk Fusion Logic (Weighted)
         // AI_Score (max of DSP, Neural, Wav2Vec2, and Cloud API) * 0.35 + Identity_Mismatch * 0.25 + Pace_Anomaly * 0.1 + Content_Risk * 0.3
         
-        // Trigger Cloud Inference in background (don't block the UI/audio thread)
+        // Trigger Cloud ASR in background
         val audioBytes = pcmToWav(pcmData, sampleRate)
         scope.launch(Dispatchers.IO) {
-            cloudRiskScore = cloudClient.getExactScamScore(audioBytes)
+            val cloudText = cloudClient.getTranscription(audioBytes)
+            if (!cloudText.isNullOrEmpty()) {
+                withContext(Dispatchers.Main) {
+                    updateTranscript(cloudText)
+                }
+            }
         }
 
         val aiScore = maxOf(guardResult.riskScore, modelResult.riskScore, wav2vecScore, cloudRiskScore)

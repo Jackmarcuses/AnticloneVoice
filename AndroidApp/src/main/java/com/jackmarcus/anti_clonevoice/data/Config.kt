@@ -10,9 +10,7 @@ object Config {
     var localIp: String = "192.168.17"
     private const val LOCAL_PORT = "8081"
 
-    // Remove all trailing slashes and http prefixes for a clean host
-    private val cleanHost = PRODUCTION_HOST.replace("https://", "").replace("http://", "").trim().trimEnd('/')
-
-    val BASE_URL: String get() = if (isProduction) "https://$cleanHost" else "http://$localIp:$LOCAL_PORT"
-    val WS_URL: String get() = if (isProduction) "wss://$cleanHost" else "ws://$localIp:$LOCAL_PORT"
+    // Final clean URLs for Render.com
+    val BASE_URL: String get() = if (isProduction) "https://anticlonevoice.onrender.com" else "http://$localIp:$LOCAL_PORT"
+    val WS_URL: String get() = if (isProduction) "wss://anticlonevoice.onrender.com" else "ws://$localIp:$LOCAL_PORT"
 }

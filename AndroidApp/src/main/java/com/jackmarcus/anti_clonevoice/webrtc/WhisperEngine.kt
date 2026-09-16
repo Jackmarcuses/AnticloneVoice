@@ -77,7 +77,7 @@ class WhisperEngine(private val context: Context, private val onResult: (String)
             }
 
             Log.d(TAG, "Whisper processed chunk successfully")
-            onResult("Whisper: [Analyzing call content...]")
+            // onResult("Whisper: [Analyzing call content...]") // Disabled placeholder
 
         } catch (e: Exception) {
             // Log only once every few seconds to avoid Logcat flood
