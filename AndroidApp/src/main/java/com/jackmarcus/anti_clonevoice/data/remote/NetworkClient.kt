@@ -29,7 +29,10 @@ object NetworkClient {
         .pingInterval(10, TimeUnit.SECONDS)
         .addInterceptor { chain ->
             val requestBuilder = chain.request().newBuilder()
-            secureStorage?.getToken()?.let { token ->
+            // Only add token if it exists AND we aren't trying to log in/sign up
+            val path = chain.request().url.encodedPath
+            val token = secureStorage?.getToken()
+            if (!token.isNullOrEmpty() && !path.contains("login") && !path.contains("signup")) {
                 requestBuilder.addHeader("Authorization", "Bearer $token")
             }
             chain.proceed(requestBuilder.build())

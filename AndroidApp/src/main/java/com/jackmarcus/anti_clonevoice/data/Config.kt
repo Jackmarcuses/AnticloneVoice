@@ -10,8 +10,8 @@ object Config {
     var localIp: String = "192.168.17"
     private const val LOCAL_PORT = "8081"
 
-    // This logic cleans up the host just in case it has http/https in it
-    private val cleanHost = PRODUCTION_HOST.removePrefix("https://").removePrefix("http://").trimEnd('/')
+    // Remove all trailing slashes and http prefixes for a clean host
+    private val cleanHost = PRODUCTION_HOST.replace("https://", "").replace("http://", "").trim().trimEnd('/')
 
     val BASE_URL: String get() = if (isProduction) "https://$cleanHost" else "http://$localIp:$LOCAL_PORT"
     val WS_URL: String get() = if (isProduction) "wss://$cleanHost" else "ws://$localIp:$LOCAL_PORT"

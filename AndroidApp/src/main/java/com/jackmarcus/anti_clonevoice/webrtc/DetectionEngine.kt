@@ -6,6 +6,7 @@ import com.jackmarcus.anti_clonevoice.data.repository.TranscriptRepository
 import kotlinx.coroutines.*
 import kotlinx.coroutines.Dispatchers
 import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 class DetectionEngine(
     private val context: Context,
@@ -25,16 +26,14 @@ class DetectionEngine(
     private val cloudClient = CloudInferenceClient("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")
     private var cloudRiskScore = 0f
     
-    private val transcriptionEngine = TranscriptionEngine(
-        context,
-        onTranscriptReady = { transcript -> updateTranscript(transcript) },
-        onParagraphCompleted = { paragraph -> analyzeIntent(paragraph) }
-    )
+    private val whisperEngine = WhisperEngine(context) { text ->
+        updateTranscript(text)
+    }
+
+    private val whisperBuffer = mutableListOf<Float>()
+    private val WHISPER_CHUNK_SIZE = 48000 // 3 seconds at 16kHz
 
     init {
-        // We will no longer start the microphone-based recognizer here
-        // transcriptionEngine.startListening()
-        
         // Listen for language changes and notify the observer
         scope.launch {
             llmAnalyzer.detectedLanguage.collect { language ->
@@ -44,12 +43,54 @@ class DetectionEngine(
     }
 
     /**
-     * Digitally processes raw audio buffers from WebRTC for transcription.
+     * Digitally processes raw audio buffers from WebRTC for transcription using Whisper.
      * This bypasses the Android Microphone conflict entirely.
      */
     fun processDigitalAudioForTranscription(audioData: ByteBuffer, sampleRate: Int, numChannels: Int) {
-        // Placeholder for future on-device ASR like Whisper.tflite
-        // For now, we will use the existing transcription engine but feed it data differently
+        try {
+            val remaining = audioData.remaining()
+            val shortLength = remaining / 2
+            if (shortLength <= 0) return
+            
+            val tempShorts = ShortArray(shortLength)
+            audioData.mark()
+            audioData.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(tempShorts)
+            audioData.reset()
+
+            // Convert to Float and Mono with thread safety
+            synchronized(whisperBuffer) {
+                for (i in 0 until shortLength step numChannels) {
+                    var sum = 0f
+                    var count = 0
+                    for (c in 0 until numChannels) {
+                        if (i + c < shortLength) {
+                            sum += tempShorts[i + c] / 32768.0f
+                            count++
+                        }
+                    }
+                    if (count > 0) {
+                        whisperBuffer.add(sum / count)
+                    }
+                }
+
+                // Process in 3-second chunks
+                if (whisperBuffer.size >= WHISPER_CHUNK_SIZE) {
+                    val chunk = whisperBuffer.take(WHISPER_CHUNK_SIZE).toFloatArray()
+                    // Clear or slide buffer BEFORE launching coroutine to avoid rapid buildup
+                    whisperBuffer.subList(0, WHISPER_CHUNK_SIZE / 2).clear() // 50% overlap
+
+                    scope.launch(Dispatchers.Default) {
+                        try {
+                            whisperEngine.transcribe(chunk)
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Whisper transcribe error: ${e.message}")
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Audio processing error: ${e.message}")
+        }
     }
 
     // Stored profile for comparison
@@ -71,23 +112,17 @@ class DetectionEngine(
     fun updateTranscript(text: String) {
         lastTranscript = text
         observer.onTranscriptUpdated(text)
-    }
-
-    /**
-     * Analyzes the intent of a full paragraph and saves it to the local history/database.
-     */
-    fun analyzeIntent(paragraph: String) {
-        llmAnalyzer.analyzeParagraph(paragraph)
         
-        // Save full paragraph to backend database only when it's complete
+        // Analyze intent of the new text
+        llmAnalyzer.analyzeParagraph(text)
+        
+        // Save to database immediately so you can see it in Supabase
         scope.launch(Dispatchers.IO) {
             val language = llmAnalyzer.detectedLanguage.value
             val langToSave = if (language == "detecting...") "Unknown" else language
-            Log.d(TAG, "Sending paragraph to DB ($langToSave): $paragraph")
-            transcriptRepository.saveParagraph(paragraph, langToSave)
+            Log.d(TAG, "Saving Transcript to DB: $text")
+            transcriptRepository.saveParagraph(text, langToSave)
         }
-        
-        Log.i(TAG, "Intent Layer Analysis: ${llmAnalyzer.scamIntentMessage.value ?: "Safe"}")
     }
 
     fun processAudioWindow(pcmData: ShortArray, sampleRate: Int): Triple<Float, String, String> {
@@ -139,7 +174,14 @@ class DetectionEngine(
         // LLM Intent Analysis (Foundation for Gemini Nano)
         val llmRisk = llmAnalyzer.llmRiskScore.value
         
-        val contentRisk = maxOf(keywordResult.riskScore, llmRisk, (weightedUrgency - 30f).coerceAtLeast(0f))
+        // Boost urgency importance if transcription is failing (Hinglish/Noisy environments)
+        val weightedUrgencyVal = if (lastTranscript.isEmpty()) urgencyRisk * 1.5f else urgencyRisk
+        
+        // Accurate Language Filtering
+        val currentLang = llmAnalyzer.detectedLanguage.value
+        val displayLang = if (currentLang == "Hindi" && lastTranscript.any { it in 'a'..'z' }) "Hinglish" else currentLang
+
+        val contentRisk = maxOf(keywordResult.riskScore, llmRisk, (weightedUrgencyVal - 30f).coerceAtLeast(0f))
 
         // REVISED Fusion: Give massive weight to synthetic voice detection
         // If AI_Score is high, the final risk MUST be high even if the person is talking about "flowers".
@@ -176,7 +218,7 @@ class DetectionEngine(
 
     override fun close() {
         scope.cancel()
-        transcriptionEngine.stopListening()
+        whisperEngine.close()
         deepfakeModel.close()
         wav2vecDetector.close()
         biometricEngine.close()
