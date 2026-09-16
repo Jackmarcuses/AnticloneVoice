@@ -33,6 +33,7 @@ object NetworkClient {
             val path = chain.request().url.encodedPath
             val token = secureStorage?.getToken()
             if (!token.isNullOrEmpty() && !path.contains("login") && !path.contains("signup")) {
+                requestBuilder.removeHeader("Authorization")
                 requestBuilder.addHeader("Authorization", "Bearer $token")
             }
             chain.proceed(requestBuilder.build())

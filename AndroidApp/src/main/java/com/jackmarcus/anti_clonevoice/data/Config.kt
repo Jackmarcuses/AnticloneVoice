@@ -10,7 +10,7 @@ object Config {
     var localIp: String = "192.168.17"
     private const val LOCAL_PORT = "8081"
 
-    // Final clean URLs for Render.com
-    val BASE_URL: String get() = if (isProduction) "https://anticlonevoice.onrender.com" else "http://$localIp:$LOCAL_PORT"
+    // Final clean URLs for Render.com (Cloudflare compatible)
+    val BASE_URL: String get() = if (isProduction) "https://anticlonevoice.onrender.com/" else "http://$localIp:$LOCAL_PORT/"
     val WS_URL: String get() = if (isProduction) "wss://anticlonevoice.onrender.com" else "ws://$localIp:$LOCAL_PORT"
 }

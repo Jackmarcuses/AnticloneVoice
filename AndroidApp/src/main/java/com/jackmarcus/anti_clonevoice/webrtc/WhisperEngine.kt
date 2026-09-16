@@ -2,8 +2,8 @@ package com.jackmarcus.anti_clonevoice.webrtc
 
 import android.content.Context
 import android.util.Log
-import org.tensorflow.lite.DataType
 import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.DataType
 import java.io.FileInputStream
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -18,6 +18,7 @@ class WhisperEngine(private val context: Context, private val onResult: (String)
     companion object {
         private const val TAG = "WhisperEngine"
         private const val MODEL_NAME = "whisper-tiny.tflite"
+        private const val VOCAB_NAME = "filters_vocab_gen.bin"
         // 960,000 bytes / 4 bytes per float = 240,000 samples
         private const val REQUIRED_SAMPLES = 240000 
     }
@@ -71,13 +72,16 @@ class WhisperEngine(private val context: Context, private val onResult: (String)
             if (outputTensor.dataType() == DataType.INT32) {
                 val outputBuffer = Array(1) { IntArray(outputShape[1]) }
                 interp.run(inputBuffer, outputBuffer)
+                if (outputBuffer[0].any { it > 0 }) {
+                   onResult("Speech detected (Processing...)")
+                }
             } else {
                 val outputBuffer = Array(1) { FloatArray(outputShape[1]) }
                 interp.run(inputBuffer, outputBuffer)
+                onResult("Analyzing digital stream...")
             }
 
             Log.d(TAG, "Whisper processed chunk successfully")
-            // onResult("Whisper: [Analyzing call content...]") // Disabled placeholder
 
         } catch (e: Exception) {
             // Log only once every few seconds to avoid Logcat flood
