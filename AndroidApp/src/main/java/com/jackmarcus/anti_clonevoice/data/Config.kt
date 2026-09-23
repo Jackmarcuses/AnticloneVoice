@@ -7,7 +7,7 @@ object Config {
     private const val PRODUCTION_HOST = "anticlonevoice.onrender.com"
     
     // Your current computer's local IP for phone-to-PC communication
-    var localIp: String = "192.168.17"
+    var localIp: String = "192.168.1.7"
     private const val LOCAL_PORT = "8081"
 
     // Final clean URLs for Render.com (Cloudflare compatible)

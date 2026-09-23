@@ -1,6 +1,7 @@
 package com.jackmarcus.backend.database
 
 import com.jackmarcus.backend.models.User
+import com.jackmarcus.backend.models.VaultItem
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import java.util.concurrent.ConcurrentHashMap
@@ -26,6 +27,7 @@ object UserDatabase {
         tempOtps.clear()
         Contacts.deleteAll()
         Messages.deleteAll()
+        VoiceVault.deleteAll()
         Users.deleteAll()
     }
 
@@ -105,6 +107,48 @@ object UserDatabase {
             it[baselineSpeechRate] = speechRate
             it[pitchVariance] = variance
         } > 0
+    }
+
+    suspend fun saveToVault(
+        ownerId: String,
+        contactId: String,
+        name: String,
+        embedding: String,
+        wps: Float,
+        pitch: Float
+    ): Boolean = DatabaseFactory.dbQuery {
+        val count = VoiceVault.select { (VoiceVault.ownerId eq ownerId) and (VoiceVault.contactId eq contactId) }.count()
+        if (count > 0) {
+            VoiceVault.update({ (VoiceVault.ownerId eq ownerId) and (VoiceVault.contactId eq contactId) }) {
+                it[this.name] = name
+                it[this.embedding] = embedding
+                it[this.wps] = wps
+                it[this.pitch] = pitch
+            } > 0
+        } else {
+            VoiceVault.insert {
+                it[this.ownerId] = ownerId
+                it[this.contactId] = contactId
+                it[this.name] = name
+                it[this.embedding] = embedding
+                it[this.wps] = wps
+                it[this.pitch] = pitch
+            }
+            true
+        }
+    }
+
+    suspend fun getVault(ownerId: String): List<VaultItem> = DatabaseFactory.dbQuery {
+        VoiceVault.select { VoiceVault.ownerId eq ownerId }
+            .map {
+                VaultItem(
+                    id = it[VoiceVault.contactId],
+                    name = it[VoiceVault.name],
+                    embedding = it[VoiceVault.embedding],
+                    wps = it[VoiceVault.wps],
+                    pitch = it[VoiceVault.pitch]
+                )
+            }
     }
 
     fun setUserOnline(userId: String) {

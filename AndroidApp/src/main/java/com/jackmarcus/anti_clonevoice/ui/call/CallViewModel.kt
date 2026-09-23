@@ -13,6 +13,8 @@ import com.jackmarcus.anti_clonevoice.data.repository.TranscriptRepository
 import com.jackmarcus.anti_clonevoice.webrtc.CallService
 import com.jackmarcus.anti_clonevoice.webrtc.SignalingClient
 import com.jackmarcus.anti_clonevoice.webrtc.WebRtcClient
+import com.jackmarcus.anti_clonevoice.webrtc.CloudInferenceClient
+import com.jackmarcus.anti_clonevoice.webrtc.VaultItem
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -39,6 +41,9 @@ class CallViewModel(
 
     private val _remoteUserId = MutableStateFlow<String?>(null)
     val remoteUserId: StateFlow<String?> = _remoteUserId.asStateFlow()
+
+    private val _remoteUserName = MutableStateFlow<String?>("Unknown")
+    val remoteUserName: StateFlow<String?> = _remoteUserName.asStateFlow()
     
     private val _isMuted = MutableStateFlow(false)
     val isMuted = _isMuted.asStateFlow()
@@ -52,16 +57,42 @@ class CallViewModel(
     private val _riskScore = MutableStateFlow(0f)
     val riskScore = _riskScore.asStateFlow()
 
-    private val _detectionMessage = MutableStateFlow("Analyzing voice...")
+    private val _identityMatchScore = MutableStateFlow(0f)
+    val identityMatchScore = _identityMatchScore.asStateFlow()
+
+    private val _acousticAuthScore = MutableStateFlow(0f)
+    val acousticAuthScore = _acousticAuthScore.asStateFlow()
+
+    private val _behavioralRhythmScore = MutableStateFlow(0f)
+    val behavioralRhythmScore = _behavioralRhythmScore.asStateFlow()
+
+    private val _detectionMessage = MutableStateFlow("Verifying voice identity...")
     val detectionMessage = _detectionMessage.asStateFlow()
 
     private val _threatLevel = MutableStateFlow("GENUINE")
     val threatLevel = _threatLevel.asStateFlow()
 
-    private val _liveTranscript = MutableStateFlow("")
+    private val _liveTranscript = MutableStateFlow("TRANSCRIPTS DISABLED")
     val liveTranscript = _liveTranscript.asStateFlow()
 
-    private val _detectedLanguage = MutableStateFlow("detecting...")
+    private val _securityChallenge = MutableStateFlow<String?>(null)
+    val securityChallenge = _securityChallenge.asStateFlow()
+
+    private val _isHardKillActive = MutableStateFlow(false)
+    val isHardKillActive = _isHardKillActive.asStateFlow()
+
+    private val _isEnrolling = MutableStateFlow(false)
+    val isEnrolling = _isEnrolling.asStateFlow()
+
+    private val _vaultContacts = MutableStateFlow<List<VaultItem>>(emptyList())
+    val vaultContacts = _vaultContacts.asStateFlow()
+
+    private val _targetCheckId = MutableStateFlow<String?>(null)
+    val targetCheckId = _targetCheckId.asStateFlow()
+
+    private val _contactMap = MutableStateFlow<Map<String, String>>(emptyMap())
+
+    private val _detectedLanguage = MutableStateFlow("Pure Integrity Mode")
     val detectedLanguage = _detectedLanguage.asStateFlow()
 
     private val _callDuration = MutableStateFlow(0L)
@@ -71,12 +102,25 @@ class CallViewModel(
     private var timerJob: Job? = null
     private var connectionTimeoutJob: Job? = null
     private var webRtcClient: WebRtcClient? = null
+    private val cloudClient = CloudInferenceClient("")
     private val myUserId: String get() = secureStorage.getUserId() ?: ""
     private var isCaller = false
     private var retryCount = 0
     private val MAX_RETRIES = 2
     
-    // Pending candidates that arrived before the peer connection was ready
+    private var criticalRiskCounter = 0
+    private val HARD_KILL_THRESHOLD = 20 // Approx 10 seconds (20 * 500ms)
+    
+    private var challengeLatchJob: Job? = null
+    
+    private val challenges = listOf(
+        "What was the last thing we ate together?",
+        "Who else was with us yesterday?",
+        "What color shirt am I wearing right now?",
+        "Where did we go on our last vacation?",
+        "What is the name of our favorite restaurant?"
+    )
+
     private val pendingCandidates = mutableListOf<IceCandidate>()
     private var isRemoteDescriptionSet = false
 
@@ -86,7 +130,17 @@ class CallViewModel(
                 handleSignalingMessage(message)
             }
         }
+        viewModelScope.launch {
+            contactsRepository.getContacts().onSuccess { contacts ->
+                _contactMap.value = contacts.associate { it.userId to it.username }
+            }
+        }
         connectSignaling()
+    }
+
+    fun getDisplayName(userId: String?): String {
+        if (userId == null) return "Unknown"
+        return _contactMap.value[userId] ?: (if (userId.length > 8) userId.take(8) + "..." else userId)
     }
 
     fun connectSignaling() {
@@ -94,19 +148,32 @@ class CallViewModel(
         signalingClient.connect(userId)
     }
 
+    private fun resetCallState() {
+        stopCallService()
+        callAudioManager.stopAll()
+        stopTimer()
+        _targetCheckId.value = null
+        _riskScore.value = 0f
+        _identityMatchScore.value = 0f
+        _acousticAuthScore.value = 0f
+        _behavioralRhythmScore.value = 0f
+        _threatLevel.value = "GENUINE"
+        _detectionMessage.value = "Verifying voice identity..."
+        _isHardKillActive.value = false
+        criticalRiskCounter = 0
+        isCaller = false
+        _remoteUserId.value = null
+        isRemoteDescriptionSet = false
+        pendingCandidates.clear()
+        webRtcClient?.resetDetectionEngine()
+    }
+
     private fun handleSignalingMessage(message: SignalingMessage) {
         val currentUserId = myUserId
-        Log.i(TAG, "New Signaling Message: ${message.type} from ${message.senderId} (Me: $currentUserId)")
-        
-        // Safety check: Don't process our own messages if they somehow loop back
-        if (message.senderId == currentUserId || message.senderId.isEmpty()) {
-            Log.d(TAG, "Dropping self-loop or invalid message")
-            return
-        }
+        if (message.senderId == currentUserId || message.senderId.isEmpty()) return
 
         when (message.type) {
             "offer" -> {
-                Log.d(TAG, "Handling 'offer'")
                 if (_callState.value == CallState.IDLE || 
                     _callState.value == CallState.RINGING || 
                     _callState.value == CallState.DIALING ||
@@ -114,11 +181,10 @@ class CallViewModel(
                     _callState.value == CallState.CONNECTED) {
                     
                     _remoteUserId.value = message.senderId
+                    _remoteUserName.value = getDisplayName(message.senderId)
                     if (_callState.value != CallState.CONNECTED) {
                         _callState.value = CallState.CONNECTING
                         callAudioManager.stopAll()
-                    } else {
-                        Log.i(TAG, "Receiving renegotiation/ICE restart offer while CONNECTED")
                     }
                     
                     if (webRtcClient == null) {
@@ -129,13 +195,10 @@ class CallViewModel(
                 }
             }
             "answer" -> {
-                Log.d(TAG, "Handling 'answer'")
                 if (_callState.value == CallState.CONNECTING || _callState.value == CallState.DIALING || _callState.value == CallState.CONNECTED) {
                     if (_callState.value != CallState.CONNECTED) {
                         callAudioManager.stopAll()
                         _callState.value = CallState.CONNECTING
-                    } else {
-                        Log.i(TAG, "Receiving ICE restart answer while CONNECTED")
                     }
                     val remoteId = _remoteUserId.value
                     if (remoteId != null) fetchRemoteProfile(remoteId)
@@ -144,7 +207,6 @@ class CallViewModel(
             }
             "candidate" -> {
                 try {
-                    Log.d(TAG, "Handling 'candidate' from ${message.senderId}")
                     val candidateData = message.data?.split("|") ?: return
                     if (candidateData.size >= 3) {
                         val sdp = candidateData.drop(2).joinToString("|")
@@ -152,77 +214,66 @@ class CallViewModel(
                         if (isRemoteDescriptionSet && webRtcClient != null) {
                             webRtcClient?.addIceCandidate(candidate)
                         } else {
-                            Log.d(TAG, "Buffering candidate from ${message.senderId} (Remote description not yet set)")
                             pendingCandidates.add(candidate)
                         }
                     }
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error handling candidate reception: ${e.message}")
+                    Log.e(TAG, "Error candidate: ${e.message}")
                 }
             }
             "call_request" -> {
-                 // Loopback Fix: Strictly ignore call_request if we are already in an active call session
                  val currentState = _callState.value
                  val isAlreadyInCall = currentState != CallState.IDLE && 
                                      currentState != CallState.ENDED && 
                                      currentState != CallState.FAILED
                                      
-                 if (isCaller || isAlreadyInCall) {
-                     Log.d(TAG, "Ignoring 'call_request' as we are busy (State: $currentState, isCaller: $isCaller)")
-                     return
-                 }
+                 if (isCaller || isAlreadyInCall) return
                  
-                 Log.i(TAG, "Received 'call_request' from ${message.senderId}")
-                 isRemoteDescriptionSet = false
-                 pendingCandidates.clear()
+                 resetCallState()
                  _remoteUserId.value = message.senderId
+                 val callerName = getDisplayName(message.senderId)
+                 _remoteUserName.value = callerName
                  _callState.value = CallState.RINGING
                  callAudioManager.startRinging()
-                 startCallService()
+                 startCallService(CallService.ACTION_START_INCOMING, callerName)
             }
             "call_response" -> {
                 if (message.data == "accepted") {
-                    Log.d(TAG, "Call accepted by remote")
                     callAudioManager.stopAll()
-                    _callState.value = CallState.CONNECTING // Transition from "Calling..." to "Connecting..."
+                    _callState.value = CallState.CONNECTING 
+                    val name = _remoteUserName.value ?: getDisplayName(_remoteUserId.value)
+                    startCallService(CallService.ACTION_START_ONGOING, name)
                     if (webRtcClient == null) {
                         webRtcClient = WebRtcClient(context, this, transcriptRepository)
                     }
                     _remoteUserId.value?.let { fetchRemoteProfile(it) }
                     webRtcClient?.startCall()
                 } else {
-                    Log.d(TAG, "Call rejected by remote")
-                    stopCallService()
-                    callAudioManager.stopAll()
+                    resetCallState()
                     _callState.value = CallState.ENDED
-                    isCaller = false
-                    _remoteUserId.value = null
                 }
             }
             "end_call" -> {
-                Log.d(TAG, "Call ended by remote")
-                stopCallService()
-                callAudioManager.stopAll()
+                resetCallState()
                 webRtcClient?.close()
+                webRtcClient = null
                 _callState.value = CallState.ENDED
-                isCaller = false
-                _remoteUserId.value = null
             }
             "ice_restart" -> {
-                Log.i(TAG, "Remote requested ICE restart")
                 webRtcClient?.restartIce()
             }
         }
     }
 
     fun startCall(receiverId: String) {
+        resetCallState()
         isCaller = true
-        isRemoteDescriptionSet = false
-        pendingCandidates.clear()
         _remoteUserId.value = receiverId
+        val calleeName = getDisplayName(receiverId)
+        _remoteUserName.value = calleeName
         _callState.value = CallState.DIALING
         callAudioManager.startDialing()
-        startCallService()
+        startCallService(CallService.ACTION_START_OUTGOING, calleeName)
         signalingClient.sendMessage(SignalingMessage("call_request", myUserId, receiverId))
         webRtcClient = WebRtcClient(context, this, transcriptRepository)
         fetchRemoteProfile(receiverId)
@@ -233,17 +284,18 @@ class CallViewModel(
         viewModelScope.launch {
             val contacts = contactsRepository.getContacts().getOrNull()
             val contact = contacts?.find { it.userId == userId }
+            val displayName = contact?.username ?: getDisplayName(userId)
+            _remoteUserName.value = displayName
+            
             if (contact != null && contact.voiceEmbedding != null) {
                 val embedding = try {
                     contact.voiceEmbedding.split(",").map { it.toFloat() }.toFloatArray()
                 } catch (e: Exception) { null }
                 
-                webRtcClient?.setRemoteVoiceProfile(embedding, contact.baselineSpeechRate, contact.pitchVariance)
-                Log.i(TAG, "Loaded voice biometric profile for $userId")
+                webRtcClient?.setRemoteVoiceProfile(embedding, contact.baselineSpeechRate, contact.pitchVariance, userId, displayName, myUserId)
+                Log.i(TAG, "Loaded voice profile for $userId ($displayName)")
             } else {
-                Log.w(TAG, "No voice biometric profile found for $userId")
-                // Reset to default (no profile)
-                webRtcClient?.setRemoteVoiceProfile(null, 0f, 0f)
+                webRtcClient?.setRemoteVoiceProfile(null, 0f, 0f, userId, displayName, myUserId)
             }
         }
     }
@@ -251,9 +303,9 @@ class CallViewModel(
     private fun startConnectionTimeout() {
         connectionTimeoutJob?.cancel()
         connectionTimeoutJob = viewModelScope.launch {
-            delay(20000) // 20 seconds timeout
+            delay(20000) 
             if (_callState.value == CallState.CONNECTING || _callState.value == CallState.DIALING) {
-                Log.e(TAG, "Connection timed out after 20s")
+                resetCallState()
                 _callState.value = CallState.FAILED
             }
         }
@@ -263,40 +315,32 @@ class CallViewModel(
         isCaller = false
         callAudioManager.stopAll()
         val receiverId = _remoteUserId.value ?: return
-        Log.i(TAG, "Accepting call from $receiverId")
-        _callState.value = CallState.CONNECTING // Show "Connecting..." UI
+        val name = _remoteUserName.value ?: getDisplayName(receiverId)
+        _callState.value = CallState.CONNECTING 
+        startCallService(CallService.ACTION_START_ONGOING, name)
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "accepted"))
         startConnectionTimeout()
     }
 
     fun rejectCall() {
         val receiverId = _remoteUserId.value ?: return
-        stopCallService()
-        callAudioManager.stopAll()
         signalingClient.sendMessage(SignalingMessage("call_response", myUserId, receiverId, "rejected"))
+        resetCallState()
         _callState.value = CallState.ENDED
-        isCaller = false
-        _remoteUserId.value = null
-        isRemoteDescriptionSet = false
-        pendingCandidates.clear()
     }
 
     fun endCall() {
-        val receiverId = _remoteUserId.value ?: return
-        stopCallService()
-        callAudioManager.stopAll()
-        stopTimer()
-        signalingClient.sendMessage(SignalingMessage("end_call", myUserId, receiverId))
+        val receiverId = _remoteUserId.value
+        if (receiverId != null) {
+            signalingClient.sendMessage(SignalingMessage("end_call", myUserId, receiverId))
+        }
         webRtcClient?.close()
+        webRtcClient = null
+        resetCallState()
         _callState.value = CallState.ENDED
-        isCaller = false
-        _remoteUserId.value = null
-        isRemoteDescriptionSet = false
-        pendingCandidates.clear()
     }
 
     private fun startTimer() {
-        Log.d(TAG, "Starting Call Timer")
         stopTimer()
         _callDuration.value = 0
         timerJob = viewModelScope.launch {
@@ -304,17 +348,16 @@ class CallViewModel(
                 while (true) {
                     delay(1000)
                     _callDuration.value += 1
-                    Log.d(TAG, "Call Duration: ${_callDuration.value}")
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Timer Job cancelled/error: ${e.message}")
-            }
+            } catch (e: Exception) {}
         }
     }
 
     private fun stopTimer() {
         timerJob?.cancel()
         timerJob = null
+        challengeLatchJob?.cancel()
+        challengeLatchJob = null
     }
 
     fun toggleMute() {
@@ -329,30 +372,91 @@ class CallViewModel(
         callAudioManager.setSpeakerphoneOn(speakerOn)
     }
 
-    /**
-     * Simulates a Hindi scam call for demonstration of LLM and keyword detection.
-     */
-    fun simulateHindiScam() {
+    fun enrollVoice() {
+        if (_isEnrolling.value) return
+        
+        // Refresh name right before enrollment to prevent "Unknown Caller" bug
+        val userId = _remoteUserId.value ?: return
+        val currentName = getDisplayName(userId)
+        _remoteUserName.value = currentName
+        
+        _isEnrolling.value = true
+        webRtcClient?.enrollVoice()
         viewModelScope.launch {
-            val scamTranscript = "Namaste, aapka account khatre mein hai. Jaldi se bank transfer kijiye warna police jail bhej degi. OTP bataye turant."
-            webRtcClient?.updateTranscript(scamTranscript)
+            delay(3000) // Visual feedback for 3 seconds
+            _isEnrolling.value = false
         }
     }
 
-    private fun startCallService() {
-        val intent = Intent(context, CallService::class.java)
-        ContextCompat.startForegroundService(context, intent)
+    fun fetchVault() {
+        viewModelScope.launch {
+            val list = cloudClient.getVaultList(myUserId)
+            _vaultContacts.value = list
+        }
+    }
+
+    fun performCrossCheck(targetUserId: String?) {
+        _targetCheckId.value = targetUserId
+        
+        // Reset scores immediately to clean defaults
+        _riskScore.value = 0f
+        _identityMatchScore.value = 0f
+        _acousticAuthScore.value = 0f
+        _behavioralRhythmScore.value = 0f
+        _threatLevel.value = "GENUINE"
+        
+        if (targetUserId != null) {
+            val item = _vaultContacts.value.find { it.id == targetUserId }
+            val name = item?.name ?: getDisplayName(targetUserId)
+            _detectionMessage.value = "Cross-checking against $name..."
+            
+            val targetEmbedding = item?.embedding?.let { str ->
+                try {
+                    str.split(",").map { it.toFloat() }.toFloatArray()
+                } catch (e: Exception) { null }
+            }
+            webRtcClient?.setCheckAgainstUserId(targetUserId, targetEmbedding)
+        } else {
+            _detectionMessage.value = "Verifying voice identity..."
+            val remoteId = _remoteUserId.value
+            webRtcClient?.setCheckAgainstUserId(null, null)
+            if (remoteId != null) {
+                fetchRemoteProfile(remoteId)
+            }
+        }
+    }
+
+    fun simulateHindiScam() {
+        // Feature disabled in Pure Integrity Mode
+    }
+
+    private fun startCallService(action: String, name: String) {
+        try {
+            val intent = Intent(context, CallService::class.java).apply {
+                this.action = action
+                putExtra(CallService.EXTRA_CALLER_NAME, name)
+            }
+            ContextCompat.startForegroundService(context, intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to start call service ($action): ${e.message}")
+        }
     }
 
     private fun stopCallService() {
-        val intent = Intent(context, CallService::class.java).apply {
-            action = CallService.ACTION_STOP
+        try {
+            val intent = Intent(context, CallService::class.java).apply {
+                action = CallService.ACTION_STOP
+            }
+            context.stopService(intent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to stop call service: ${e.message}")
         }
-        context.stopService(intent)
     }
 
     override fun onCleared() {
-        callAudioManager.stopAll()
+        resetCallState()
+        webRtcClient?.close()
+        webRtcClient = null
     }
 
     override fun onIceCandidate(candidate: IceCandidate) {
@@ -369,39 +473,26 @@ class CallViewModel(
 
     override fun onConnectionStateChange(state: PeerConnection.IceConnectionState) {
         viewModelScope.launch {
-            Log.d(TAG, "ICE Connection State Change: $state")
             when (state) {
                 PeerConnection.IceConnectionState.CONNECTED -> {
-                    Log.i(TAG, "Call Connected!")
                     connectionTimeoutJob?.cancel()
                     callAudioManager.stopAll()
                     callAudioManager.setCommunicationMode()
                     _callState.value = CallState.CONNECTED
+                    val name = _remoteUserName.value ?: getDisplayName(_remoteUserId.value)
+                    startCallService(CallService.ACTION_START_ONGOING, name)
                     startTimer()
                     retryCount = 0
                 }
                 PeerConnection.IceConnectionState.FAILED -> {
-                    Log.e(TAG, "ICE Connection Failed")
                     if (retryCount < MAX_RETRIES) {
                         retryCount++
-                        Log.i(TAG, "Attempting ICE Restart due to connection failure (Retry $retryCount/$MAX_RETRIES)")
                         signalingClient.sendMessage(SignalingMessage("ice_restart", myUserId, _remoteUserId.value ?: ""))
                         webRtcClient?.restartIce()
                     } else {
                         stopTimer()
-                        connectionTimeoutJob?.cancel()
+                        resetCallState()
                         _callState.value = CallState.FAILED
-                    }
-                }
-                PeerConnection.IceConnectionState.DISCONNECTED -> {
-                    Log.w(TAG, "ICE Connection Disconnected")
-                    delay(3000)
-                    if ((_callState.value == CallState.CONNECTED || _callState.value == CallState.CONNECTING) && 
-                        retryCount < MAX_RETRIES) {
-                        retryCount++
-                        Log.w(TAG, "Still disconnected after 3s, initiating ICE restart (Retry $retryCount/$MAX_RETRIES)...")
-                        signalingClient.sendMessage(SignalingMessage("ice_restart", myUserId, _remoteUserId.value ?: ""))
-                        webRtcClient?.restartIce()
                     }
                 }
                 else -> {}
@@ -410,12 +501,10 @@ class CallViewModel(
     }
 
     override fun onRemoteAudioLevel(level: Double) {
-        // Convert normalized 0.0-1.0 level to a float for Compose animation
         _remoteAudioLevel.value = level.toFloat()
     }
 
     override fun onRemoteDescriptionSet() {
-        Log.d(TAG, "Remote description set, flushing ${pendingCandidates.size} candidates")
         isRemoteDescriptionSet = true
         pendingCandidates.forEach { candidate ->
             webRtcClient?.addIceCandidate(candidate)
@@ -423,17 +512,49 @@ class CallViewModel(
         pendingCandidates.clear()
     }
 
-    override fun onDetectionResult(riskScore: Float, message: String, level: String) {
-        _riskScore.value = riskScore
+    override fun onDetectionResult(
+        riskScore: Float, 
+        message: String, 
+        level: String, 
+        recommendChallenge: Boolean,
+        identityMatch: Float,
+        acousticAuth: Float,
+        behavioralMatch: Float
+    ) {
+        _riskScore.value = riskScore.coerceIn(0f, 100f)
         _detectionMessage.value = message
         _threatLevel.value = level
+        _identityMatchScore.value = identityMatch.coerceIn(0f, 100f)
+        _acousticAuthScore.value = acousticAuth.coerceIn(0f, 100f)
+        _behavioralRhythmScore.value = behavioralMatch.coerceIn(0f, 100f)
+        
+        // 1. Proof of Life Logic with 10s Latching
+        if (recommendChallenge && challengeLatchJob == null) {
+            _securityChallenge.value = challenges.random()
+            // Latch the challenge for 10 seconds
+            challengeLatchJob = viewModelScope.launch {
+                delay(10000)
+                _securityChallenge.value = null
+                challengeLatchJob = null
+            }
+        }
+        
+        // 2. Hard Kill Logic
+        if (riskScore >= 95f) {
+            criticalRiskCounter++
+            if (criticalRiskCounter >= HARD_KILL_THRESHOLD && !_isHardKillActive.value) {
+                _isHardKillActive.value = true
+                Log.e(TAG, "HARD KILL TRIGGERED: Sustained critical risk detected.")
+                viewModelScope.launch {
+                    delay(3000) // Show alert for 3 seconds before hanging up
+                    endCall()
+                }
+            }
+        } else {
+            criticalRiskCounter = 0
+        }
     }
 
-    override fun onTranscriptUpdated(transcript: String) {
-        _liveTranscript.value = transcript
-    }
-
-    override fun onLanguageDetected(language: String) {
-        _detectedLanguage.value = language
-    }
+    override fun onTranscriptUpdated(transcript: String) {}
+    override fun onLanguageDetected(language: String) {}
 }

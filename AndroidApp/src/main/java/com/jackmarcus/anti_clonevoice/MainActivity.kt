@@ -1,5 +1,8 @@
 package com.jackmarcus.anti_clonevoice
 
+import android.app.KeyguardManager
+import android.content.Context
+import android.view.WindowManager
 import android.Manifest
 import android.os.Build
 import android.os.Bundle
@@ -57,6 +60,29 @@ import android.content.Intent
 
 import android.util.Log
 
+object CallViewModelHolder {
+    private var instance: CallViewModel? = null
+
+    fun getInstance(
+        context: Context,
+        signalingClient: SignalingClient,
+        secureStorage: SecureStorage,
+        contactsRepository: ContactsRepository,
+        transcriptRepository: TranscriptRepository
+    ): CallViewModel {
+        if (instance == null) {
+            instance = CallViewModel(
+                context.applicationContext,
+                signalingClient,
+                secureStorage,
+                contactsRepository,
+                transcriptRepository
+            )
+        }
+        return instance!!
+    }
+}
+
 class MainActivity : ComponentActivity() {
     private val TAG = "MainActivity"
     private lateinit var callViewModel: CallViewModel
@@ -64,6 +90,22 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
+        // Show over lockscreen and turn screen on for incoming calls (like WhatsApp)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+            val keyguardManager = getSystemService(KeyguardManager::class.java)
+            keyguardManager?.requestDismissKeyguard(this, null)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+        }
+
         // Add Global Crash Handler to help debug POCO crashes
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             Log.e("CRITICAL_CRASH", "Crash in thread ${thread.name}: ${throwable.message}")
@@ -109,7 +151,13 @@ class MainActivity : ComponentActivity() {
         
         val signalingClient = SignalingClient(sharedClient)
         val transcriptRepository = TranscriptRepository()
-        callViewModel = CallViewModel(applicationContext, signalingClient, secureStorage, contactsRepository, transcriptRepository)
+        callViewModel = CallViewModelHolder.getInstance(
+            applicationContext,
+            signalingClient,
+            secureStorage,
+            contactsRepository,
+            transcriptRepository
+        )
         
         val chatRepository = ChatRepository(secureStorage, sharedClient)
         val chatViewModel = ChatViewModel(chatRepository, secureStorage)
@@ -132,9 +180,19 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun handleIntent(intent: Intent?, viewModel: CallViewModel) {
-        if (intent?.action == "ANSWER_CALL") {
-            Log.i(TAG, "Answer call action triggered from notification")
-            viewModel.acceptCall()
+        when (intent?.action) {
+            "ANSWER_CALL" -> {
+                Log.i(TAG, "Answer call action triggered from notification")
+                viewModel.acceptCall()
+            }
+            "DECLINE_CALL" -> {
+                Log.i(TAG, "Decline call action triggered from notification")
+                viewModel.rejectCall()
+            }
+            "END_CALL" -> {
+                Log.i(TAG, "End call action triggered from notification")
+                viewModel.endCall()
+            }
         }
     }
 }

@@ -41,7 +41,15 @@ class WebRtcClient(
         fun onConnectionStateChange(state: PeerConnection.IceConnectionState)
         fun onRemoteAudioLevel(level: Double)
         fun onRemoteDescriptionSet()
-        fun onDetectionResult(riskScore: Float, message: String, level: String)
+        fun onDetectionResult(
+            riskScore: Float,
+            message: String,
+            level: String,
+            recommendChallenge: Boolean = false,
+            identityMatch: Float = 100f,
+            acousticAuth: Float = 100f,
+            behavioralMatch: Float = 100f
+        )
         fun onTranscriptUpdated(transcript: String)
         fun onLanguageDetected(language: String)
     }
@@ -78,6 +86,7 @@ class WebRtcClient(
     private var statsTimer: Timer? = null
     private var localAudioTrack: AudioTrack? = null
     private var statsLogCounter = 0
+    private var isClosed = false
 
     init {
         try {
@@ -337,13 +346,15 @@ class WebRtcClient(
     }
 
     fun close() {
+        if (isClosed) return
+        isClosed = true
         try {
             statsTimer?.cancel()
             statsTimer = null
             localAudioTrack?.setEnabled(false)
             localAudioTrack?.dispose()
             localAudioTrack = null
-            peerConnection?.close()
+            peerConnection?.dispose()
             peerConnection = null
             detectionEngine.close()
             Log.i(TAG, "WebRtcClient closed safely")
@@ -363,8 +374,26 @@ class WebRtcClient(
     private val detectionEngine = DetectionEngine(context, observer, transcriptRepository)
     private val pipelineProcessor = AudioPipelineProcessor(detectionEngine, observer)
 
-    fun setRemoteVoiceProfile(embedding: FloatArray?, rate: Float, variance: Float) {
+    fun setRemoteVoiceProfile(embedding: FloatArray?, rate: Float, variance: Float, userId: String, userName: String = "Unknown Caller", myUserId: String) {
         detectionEngine.setStoredProfile(embedding, rate, variance)
+        detectionEngine.setRemoteUserId(userId, userName)
+        detectionEngine.setMyUserId(myUserId)
+    }
+
+    fun setCheckAgainstUserId(userId: String?, targetEmbedding: FloatArray? = null) {
+        detectionEngine.setCheckAgainstUserId(userId, targetEmbedding)
+    }
+
+    fun resetDetectionEngine() {
+        detectionEngine.resetEngineState()
+    }
+
+    fun enrollVoice() {
+        detectionEngine.enrollVoice()
+    }
+
+    fun setCheckAgainstUserId(userId: String?) {
+        detectionEngine.setCheckAgainstUserId(userId)
     }
 
     private val remoteAudioSink = object : AudioTrackSink {
@@ -376,6 +405,7 @@ class WebRtcClient(
             numberOfFrames: Int,
             absoluteCaptureTimestampMs: Long
         ) {
+            if (isClosed) return
             if (audioData != null) {
                 // Pass digital audio to the detection pipeline for features
                 pipelineProcessor.processIncomingBuffer(audioData, sampleRate, numberOfChannels)
@@ -436,10 +466,18 @@ class AudioPipelineProcessor(private val detectionEngine: DetectionEngine, priva
             
             if (bufferIndex == windowSize) {
                 // Run full fusion pipeline on the 3s window
-                val (riskScore, message, level) = detectionEngine.processAudioWindow(pcmBuffer.clone(), targetSampleRate)
+                val result = detectionEngine.processAudioWindow(pcmBuffer.clone(), targetSampleRate)
                 
                 // Notify UI via observer
-                observer.onDetectionResult(riskScore, message, level)
+                observer.onDetectionResult(
+                    riskScore = result.riskScore,
+                    message = result.message,
+                    level = result.threatLevel,
+                    recommendChallenge = result.recommendChallenge,
+                    identityMatch = result.identityMismatch,
+                    acousticAuth = result.acousticAnomaly,
+                    behavioralMatch = result.behavioralAnomaly
+                )
 
                 // Slide window: Keep the last (windowSize - stepSize) and move it to the front
                 val remainingSamples = windowSize - stepSize

@@ -4,12 +4,20 @@ import android.content.Context
 import android.util.Log
 import com.jackmarcus.anti_clonevoice.data.repository.TranscriptRepository
 import kotlinx.coroutines.*
-import kotlinx.coroutines.Dispatchers
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
+
+data class IntegrityResult(
+    val riskScore: Float,
+    val message: String,
+    val threatLevel: String,
+    val recommendChallenge: Boolean = false,
+    val acousticAnomaly: Float = 0f,
+    val identityMismatch: Float = 0f,
+    val behavioralAnomaly: Float = 0f
+)
 
 class DetectionEngine(
-    private val context: Context,
+    context: Context,
     private val observer: WebRtcClient.WebRtcObserver,
     private val transcriptRepository: TranscriptRepository
 ) : AutoCloseable {
@@ -20,213 +28,235 @@ class DetectionEngine(
     private val deepfakeModel = VoiceDeepfakeModelEngine(context)
     private val biometricEngine = VoiceBiometricEngine(context)
     private val prosodyAnalyzer = ProsodyAnalyzer()
-    private val scamDetector = ScamContentDetector()
-    private val llmAnalyzer = LlmScamAnalyzer(context)
     private val wav2vecDetector = Wav2VecDetector(context)
-    private val cloudClient = CloudInferenceClient("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")
-    private var cloudRiskScore = 0f
+    private val cloudClient = CloudInferenceClient("") 
     
-    private val whisperEngine = WhisperEngine(context) { text ->
-        updateTranscript(text)
-    }
-
-    private val whisperBuffer = mutableListOf<Float>()
-    private val WHISPER_CHUNK_SIZE = 48000 // 3 seconds at 16kHz
-    private var isWhisperBusy = false
-
-    init {
-        // Listen for language changes and notify the observer
-        scope.launch {
-            llmAnalyzer.detectedLanguage.collect { language ->
-                observer.onLanguageDetected(language)
-            }
-        }
-    }
-
-    /**
-     * Digitally processes raw audio buffers from WebRTC for transcription using Whisper.
-     * This bypasses the Android Microphone conflict entirely.
-     */
-    fun processDigitalAudioForTranscription(audioData: ByteBuffer, sampleRate: Int, numChannels: Int) {
-        try {
-            val remaining = audioData.remaining()
-            val shortLength = remaining / 2
-            if (shortLength <= 0) return
-            
-            val tempShorts = ShortArray(shortLength)
-            audioData.mark()
-            audioData.order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(tempShorts)
-            audioData.reset()
-
-            // Convert to Float and Mono with thread safety
-            synchronized(whisperBuffer) {
-                for (i in 0 until shortLength step numChannels) {
-                    var sum = 0f
-                    var count = 0
-                    for (c in 0 until numChannels) {
-                        if (i + c < shortLength) {
-                            sum += tempShorts[i + c] / 32768.0f
-                            count++
-                        }
-                    }
-                    if (count > 0) {
-                        whisperBuffer.add(sum / count)
-                    }
-                }
-
-                // Process in 3-second chunks only if the AI is not busy
-                if (whisperBuffer.size >= WHISPER_CHUNK_SIZE && !isWhisperBusy) {
-                    isWhisperBusy = true
-                    val chunk = whisperBuffer.take(WHISPER_CHUNK_SIZE).toFloatArray()
-                    whisperBuffer.clear() // Clear buffer to prevent memory buildup
-
-                    scope.launch(Dispatchers.Default) {
-                        try {
-                            whisperEngine.transcribe(chunk)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Whisper transcribe error: ${e.message}")
-                        } finally {
-                            isWhisperBusy = false
-                        }
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Audio processing error: ${e.message}")
-        }
-    }
-
-    // Stored profile for comparison
+    private var dhwaniRiskScore = 0f
+    private var serverIdentityScore = 1.0f
+    private var serverBehavioralScore = 1.0f
+    private var serverIsSpeech = false
+    private var remoteUserId = "unknown"
+    private var remoteUserName = "Unknown Caller"
+    private var checkAgainstUserId: String? = null
+    private var myUserId = "unknown"
+    private var requestCounter = 0L
+    private var currentUiState: IntegrityResult = IntegrityResult(0f, "Analyzing...", "GENUINE")
+    private var consecutiveMismatchCount = 0
+    private val callStartTime = System.currentTimeMillis()
     private var storedEmbedding: FloatArray? = null
-    private var storedSpeechRate: Float = 0f
-    private var storedPitchVariance: Float = 0f
-    private var lastTranscript: String = ""
 
-    fun setStoredProfile(embedding: FloatArray?, rate: Float, variance: Float) {
+    private var smoothedAcousticRisk = 0f
+    private var smoothedIdentityMismatch = 0f
+    private var smoothedBehavioralMismatch = 0f
+    
+    @Volatile
+    private var isClosed = false
+    
+    private var shouldEnroll = false
+
+    fun resetEngineState() {
+        serverIdentityScore = 1.0f
+        serverBehavioralScore = 1.0f
+        dhwaniRiskScore = 0f
+        smoothedAcousticRisk = 0f
+        smoothedIdentityMismatch = 0f
+        smoothedBehavioralMismatch = 0f
+        consecutiveMismatchCount = 0
+        checkAgainstUserId = null
+        currentUiState = IntegrityResult(0f, "Verifying voice identity...", "GENUINE")
+        Log.i(TAG, "Detection engine state reset to clean defaults")
+    }
+
+    fun setStoredProfile(embedding: FloatArray?, rate: Float = 0f, variance: Float = 0f) {
         this.storedEmbedding = embedding
-        this.storedSpeechRate = rate
-        this.storedPitchVariance = variance
+        Log.i(TAG, "Stored voice profile updated (embedding size: ${embedding?.size ?: 0})")
     }
 
-    /**
-     * Updates the conversation transcript to be analyzed by the LLM.
-     * This would typically be called by an ASR engine during a call.
-     */
-    fun updateTranscript(text: String) {
-        lastTranscript = text
-        observer.onTranscriptUpdated(text)
-        
-        // Analyze intent of the new text
-        llmAnalyzer.analyzeParagraph(text)
-        
-        // Save to database immediately so you can see it in Supabase
-        scope.launch(Dispatchers.IO) {
-            val language = llmAnalyzer.detectedLanguage.value
-            val langToSave = if (language == "detecting...") "Unknown" else language
-            Log.d(TAG, "Saving Transcript to DB: $text")
-            transcriptRepository.saveParagraph(text, langToSave)
+    fun setRemoteUserId(userId: String, userName: String = "Unknown Caller") {
+        this.remoteUserId = userId
+        this.remoteUserName = userName
+    }
+
+    fun setMyUserId(userId: String) {
+        this.myUserId = userId
+    }
+
+    fun setCheckAgainstUserId(userId: String?, targetEmbedding: FloatArray? = null) {
+        this.checkAgainstUserId = userId
+        if (targetEmbedding != null) {
+            this.storedEmbedding = targetEmbedding
         }
+        serverIdentityScore = 1.0f 
+        serverBehavioralScore = 1.0f
+        smoothedIdentityMismatch = 0f
+        consecutiveMismatchCount = 0
+        Log.i(TAG, "Cross-check target set to '$userId' (embedding provided: ${targetEmbedding != null})")
     }
 
-    fun processAudioWindow(pcmData: ShortArray, sampleRate: Int): Triple<Float, String, String> {
+    fun enrollVoice() {
+        this.shouldEnroll = true
+        Log.i(TAG, "Enrollment requested for $remoteUserId")
+    }
+
+    fun processDigitalAudioForTranscription(audioData: ByteBuffer, sampleRate: Int, numChannels: Int) {}
+    fun updateTranscript(text: String) {}
+
+    fun processAudioWindow(pcmData: ShortArray, sampleRate: Int): IntegrityResult {
+        if (isClosed) return IntegrityResult(0f, "Engine Closed", "UNKNOWN")
+        
         val floatData = FloatArray(pcmData.size) { i -> pcmData[i] / 32768.0f }
         
-        // 1. Voice Guard DSP Check
+        // 1. Acoustic Integrity (Local DSP + Neural)
         val guardResult = voiceGuard.analyzeAudioChunk(pcmData)
-        
-        // 2. Neural Deepfake Check
         val modelResult = deepfakeModel.detectVoiceClone(floatData)
-
-        // 3. Wav2Vec 2.0 Latent Anomaly Check
         val wav2vecScore = wav2vecDetector.analyzeLatentFeatures(floatData)
         
-        // 4. Biometric Identity Check
-        val liveEmbedding = biometricEngine.extractEmbedding(floatData)
-        val identityScore = storedEmbedding?.let { 
-            biometricEngine.calculateIdentityScore(liveEmbedding, it) 
-        } ?: 1.0f // If no profile, assume match for baseline
-        
-        val identityMismatch = (1.0f - identityScore) * 100.0f
-
-        // 4. Behavioral Prosody Check
+        // 2. Behavioral Prosody (Local)
         val prosodyMetrics = prosodyAnalyzer.analyzeProsody(floatData, sampleRate)
-        val rateAnomaly = if (storedSpeechRate > 0) {
-            Math.abs(prosodyMetrics.speechRate - storedSpeechRate) / storedSpeechRate * 100f
+
+        val isSpeech = guardResult.isSpeechActive
+
+        // 3. Compute Real-time Local Anomaly Scores
+        val rawAcoustic = if (isSpeech) {
+            maxOf(guardResult.riskScore, modelResult.riskScore, wav2vecScore, dhwaniRiskScore).coerceIn(0f, 100f)
         } else 0f
 
-        // 6. Risk Fusion Logic (Weighted)
-        // AI_Score (max of DSP, Neural, Wav2Vec2, and Cloud API) * 0.35 + Identity_Mismatch * 0.25 + Pace_Anomaly * 0.1 + Content_Risk * 0.3
+        val rawIdentityMismatch = if (isSpeech && storedEmbedding != null) {
+            val liveVec = biometricEngine.extractEmbedding(floatData)
+            val sim = biometricEngine.calculateIdentityScore(liveVec, storedEmbedding!!)
+            val threshold = if (checkAgainstUserId != null) 0.65f else 0.55f
+            val localMismatch = if (sim < threshold) ((threshold - sim) / threshold * 100f).coerceIn(0f, 100f) else 0f
+            val serverMismatch = ((1.0f - serverIdentityScore) * 100f).coerceIn(0f, 100f)
+            maxOf(localMismatch, serverMismatch)
+        } else if (isSpeech) {
+            ((1.0f - serverIdentityScore) * 100f).coerceIn(0f, 100f)
+        } else 0f
+
+        val rawBehavioralMismatch = if (isSpeech) {
+            val localUrgency = (prosodyMetrics.urgencyScore - 25f).coerceIn(0f, 100f)
+            val serverBeh = ((1.0f - serverBehavioralScore) * 100f).coerceIn(0f, 100f)
+            maxOf(localUrgency, serverBeh)
+        } else 0f
+
+        // 4. Temporal Exponential Moving Average (EMA) Smoothing
+        if (isSpeech) {
+            smoothedAcousticRisk = (smoothedAcousticRisk * 0.75f) + (rawAcoustic * 0.25f)
+            smoothedIdentityMismatch = (smoothedIdentityMismatch * 0.75f) + (rawIdentityMismatch * 0.25f)
+            smoothedBehavioralMismatch = (smoothedBehavioralMismatch * 0.75f) + (rawBehavioralMismatch * 0.25f)
+        } else {
+            smoothedAcousticRisk *= 0.7f
+            smoothedIdentityMismatch *= 0.7f
+            smoothedBehavioralMismatch *= 0.7f
+            if (smoothedAcousticRisk < 0.1f) smoothedAcousticRisk = 0f
+            if (smoothedIdentityMismatch < 0.1f) smoothedIdentityMismatch = 0f
+            if (smoothedBehavioralMismatch < 0.1f) smoothedBehavioralMismatch = 0f
+        }
+
+        val finalRisk = ((smoothedAcousticRisk * 0.6f) + (smoothedIdentityMismatch * 0.25f) + (smoothedBehavioralMismatch * 0.15f)).coerceIn(0f, 100f)
+        val (msg, level, recommend) = generateAlertMessage(finalRisk, smoothedAcousticRisk, smoothedIdentityMismatch, smoothedBehavioralMismatch, isSpeech, checkAgainstUserId)
         
-        // Trigger Cloud ASR in background
+        currentUiState = IntegrityResult(
+            riskScore = finalRisk,
+            message = msg,
+            threatLevel = level,
+            recommendChallenge = recommend,
+            acousticAnomaly = smoothedAcousticRisk,
+            identityMismatch = smoothedIdentityMismatch,
+            behavioralAnomaly = smoothedBehavioralMismatch
+        )
+
+        // Push real-time smoothed metrics to UI immediately
+        observer.onDetectionResult(
+            riskScore = finalRisk,
+            message = msg,
+            level = level,
+            recommendChallenge = recommend,
+            identityMatch = smoothedIdentityMismatch,
+            acousticAuth = smoothedAcousticRisk,
+            behavioralMatch = smoothedBehavioralMismatch
+        )
+
+        // 5. Trigger Async Cloud Analysis
         val audioBytes = pcmToWav(pcmData, sampleRate)
+        val currentEnrollFlag = shouldEnroll
+        val targetCheckId = checkAgainstUserId
+        val requestId = ++requestCounter
+        shouldEnroll = false
+
         scope.launch(Dispatchers.IO) {
-            val cloudText = cloudClient.getTranscription(audioBytes)
-            if (!cloudText.isNullOrEmpty()) {
-                withContext(Dispatchers.Main) {
-                    updateTranscript(cloudText)
-                }
+            if (isClosed || !isActive) return@launch
+            val response = cloudClient.getVoiceAnalysis(
+                audioBytes = audioBytes, 
+                userId = remoteUserId, 
+                ownerId = myUserId,
+                userName = remoteUserName,
+                wps = prosodyMetrics.speechRate, 
+                pitch = prosodyMetrics.pitchVariance, 
+                enroll = currentEnrollFlag,
+                checkAgainst = targetCheckId
+            )
+            
+            if (requestId >= requestCounter && response != null) {
+                dhwaniRiskScore = response.dhwaniRisk.coerceIn(0f, 100f)
+                val safeIdScore = if (response.identityScore > 1.0f) response.identityScore / 100.0f else response.identityScore
+                val safeBehScore = if (response.behavioralScore > 1.0f) response.behavioralScore / 100.0f else response.behavioralScore
+
+                serverIdentityScore = ((serverIdentityScore * 0.3f) + (safeIdScore.coerceIn(0f, 1f) * 0.7f)).coerceIn(0f, 1f)
+                serverBehavioralScore = ((serverBehavioralScore * 0.3f) + (safeBehScore.coerceIn(0f, 1f) * 0.7f)).coerceIn(0f, 1f)
+                serverIsSpeech = response.isSpeech
             }
         }
 
-        val aiScore = maxOf(guardResult.riskScore, modelResult.riskScore, wav2vecScore, cloudRiskScore)
-        
-        // Behavioral / Prosodic Urgency
-        val urgencyRisk = prosodyMetrics.urgencyScore
-        
-        // Boost urgency importance if transcription is failing (Hinglish/Noisy environments)
-        val weightedUrgency = if (lastTranscript.isEmpty()) urgencyRisk * 1.5f else urgencyRisk
-        
-        // Social Engineering / Content Heuristic (Hinglish/Multilingual keywords)
-        val keywordResult = scamDetector.analyzeText(lastTranscript) 
-        
-        // LLM Intent Analysis (Foundation for Gemini Nano)
-        val llmRisk = llmAnalyzer.llmRiskScore.value
-        
-        // Boost urgency importance if transcription is failing (Hinglish/Noisy environments)
-        val weightedUrgencyVal = if (lastTranscript.isEmpty()) urgencyRisk * 1.5f else urgencyRisk
-        
-        // Accurate Language Filtering
-        val currentLang = llmAnalyzer.detectedLanguage.value
-        val displayLang = if (currentLang == "Hindi" && lastTranscript.any { it in 'a'..'z' }) "Hinglish" else currentLang
+        return currentUiState
+    }
 
-        val contentRisk = maxOf(keywordResult.riskScore, llmRisk, (weightedUrgencyVal - 30f).coerceAtLeast(0f))
-
-        // REVISED Fusion: Give massive weight to synthetic voice detection
-        // If AI_Score is high, the final risk MUST be high even if the person is talking about "flowers".
-        val finalRisk = if (aiScore >= 80f) {
-            (aiScore * 0.8f) + (contentRisk * 0.2f)
+    private fun generateAlertMessage(
+        clampedRisk: Float, 
+        acousticScore: Float, 
+        identityMismatch: Float, 
+        behavioralMismatch: Float,
+        isSpeech: Boolean,
+        targetCheckId: String?
+    ): Triple<String, String, Boolean> {
+        val timeSinceStart = System.currentTimeMillis() - callStartTime
+        if (identityMismatch >= 25f && isSpeech) {
+            consecutiveMismatchCount++
         } else {
-            (aiScore * 0.4f) + (identityMismatch * 0.2f) + (contentRisk * 0.4f)
+            consecutiveMismatchCount = 0
         }
 
-        // Generate Alert Message
+        val recommendChallenge = consecutiveMismatchCount >= 3 && timeSinceStart > 3000
+        
         val message = when {
-            aiScore >= 95 -> "CRITICAL: Synthetic TTS / Voice Clone Detected"
-            finalRisk >= 75 || contentRisk >= 80 -> "CRITICAL: Multilingual Scam Detected!"
-            wav2vecScore >= 60 -> "CRITICAL: Wav2Vec2 Latent Anomaly Detected"
-            finalRisk >= 60 -> "CRITICAL: Potential Voice Clone"
-            llmRisk >= 70 -> "WARNING: LLM flagged suspicious intent"
-            contentRisk >= 60 -> "WARNING: Suspicious Scam Content (Hinglish)"
-            aiScore >= 50 -> "WARNING: Synthetic Voice Signature"
-            identityMismatch >= 40 -> "WARNING: Identity Mismatch"
-            urgencyRisk >= 70 -> "SUSPICIOUS: High Pressure Speech detected"
-            rateAnomaly >= 50 -> "SUSPICIOUS: Unusual Talking Pace"
-            else -> "Voice Verified: Secure"
+            !isSpeech && clampedRisk < 30 -> "Monitoring silence..."
+            clampedRisk >= 90 || acousticScore >= 95 -> "CRITICAL: Synthetic TTS / Voice Clone Detected"
+            identityMismatch >= 50 -> {
+                if (targetCheckId != null) "CRITICAL: Voice DOES NOT match $targetCheckId"
+                else "CRITICAL: Voice Fingerprint Mismatch (Identity)"
+            }
+            dhwaniRiskScore >= 75 -> "CRITICAL: Synthetic Phase Anomaly Detected"
+            clampedRisk >= 75 -> "CRITICAL: Potential Impersonation Attempt"
+            acousticScore >= 50 -> "WARNING: Synthetic Voice Signature"
+            identityMismatch >= 25 -> "WARNING: Identity Mismatch"
+            behavioralMismatch >= 40 -> "SUSPICIOUS: Unnatural Voice Behavior"
+            else -> {
+                if (targetCheckId != null) "VERIFIED: Voice matches $targetCheckId"
+                else "Voice Verified: Secure"
+            }
         }
         
         val level = when {
-            aiScore >= 80 || finalRisk >= 60 || contentRisk >= 60 || llmRisk >= 70 || wav2vecScore >= 60 -> "CRITICAL"
-            finalRisk >= 30 || contentRisk >= 30 || urgencyRisk >= 70 -> "SUSPICIOUS"
+            clampedRisk >= 60 || acousticScore >= 80 || identityMismatch >= 50 -> "CRITICAL"
+            clampedRisk >= 30 || identityMismatch >= 25 || behavioralMismatch >= 30 -> "SUSPICIOUS"
             else -> "GENUINE"
         }
-
-        Log.i(TAG, "Fusion Risk: ${String.format("%.2f", finalRisk)}% -> $message")
-        return Triple(finalRisk, message, level)
+        
+        return Triple(message, level, recommendChallenge)
     }
 
     override fun close() {
+        isClosed = true
         scope.cancel()
-        whisperEngine.close()
         deepfakeModel.close()
         wav2vecDetector.close()
         biometricEngine.close()
@@ -242,27 +272,23 @@ class DetectionEngine(
         }
 
         val totalDataLen = byteData.size + headerSize - 8
-        val byteRate = sampleRate * 2 // 16-bit mono
+        val byteRate = sampleRate * 2 
 
         val wavHeader = ByteArray(headerSize)
-        // RIFF header
         wavHeader[0] = 'R'.code.toByte(); wavHeader[1] = 'I'.code.toByte(); wavHeader[2] = 'F'.code.toByte(); wavHeader[3] = 'F'.code.toByte()
         wavHeader[4] = (totalDataLen and 0xff).toByte(); wavHeader[5] = (totalDataLen shr 8 and 0xff).toByte()
         wavHeader[6] = (totalDataLen shr 16 and 0xff).toByte(); wavHeader[7] = (totalDataLen shr 24 and 0xff).toByte()
-        // WAVE header
         wavHeader[8] = 'W'.code.toByte(); wavHeader[9] = 'A'.code.toByte(); wavHeader[10] = 'V'.code.toByte(); wavHeader[11] = 'E'.code.toByte()
-        // fmt chunk
         wavHeader[12] = 'f'.code.toByte(); wavHeader[13] = 'm'.code.toByte(); wavHeader[14] = 't'.code.toByte(); wavHeader[15] = ' '.code.toByte()
-        wavHeader[16] = 16; wavHeader[17] = 0; wavHeader[18] = 0; wavHeader[19] = 0 // format chunk size
-        wavHeader[20] = 1; wavHeader[21] = 0 // format (PCM)
-        wavHeader[22] = 1; wavHeader[23] = 0 // channels (mono)
+        wavHeader[16] = 16; wavHeader[17] = 0; wavHeader[18] = 0; wavHeader[19] = 0 
+        wavHeader[20] = 1; wavHeader[21] = 0 
+        wavHeader[22] = 1; wavHeader[23] = 0 
         wavHeader[24] = (sampleRate and 0xff).toByte(); wavHeader[25] = (sampleRate shr 8 and 0xff).toByte()
         wavHeader[26] = (sampleRate shr 16 and 0xff).toByte(); wavHeader[27] = (sampleRate shr 24 and 0xff).toByte()
         wavHeader[28] = (byteRate and 0xff).toByte(); wavHeader[29] = (byteRate shr 8 and 0xff).toByte()
         wavHeader[30] = (byteRate shr 16 and 0xff).toByte(); wavHeader[31] = (byteRate shr 24 and 0xff).toByte()
-        wavHeader[32] = 2; wavHeader[33] = 0 // block align
-        wavHeader[34] = 16; wavHeader[35] = 0 // bits per sample
-        // data chunk
+        wavHeader[32] = 2; wavHeader[33] = 0 
+        wavHeader[34] = 16; wavHeader[35] = 0 
         wavHeader[36] = 'd'.code.toByte(); wavHeader[37] = 'a'.code.toByte(); wavHeader[38] = 't'.code.toByte(); wavHeader[39] = 'a'.code.toByte()
         wavHeader[40] = (byteData.size and 0xff).toByte(); wavHeader[41] = (byteData.size shr 8 and 0xff).toByte()
         wavHeader[42] = (byteData.size shr 16 and 0xff).toByte(); wavHeader[43] = (byteData.size shr 24 and 0xff).toByte()

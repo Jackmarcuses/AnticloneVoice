@@ -77,13 +77,15 @@ class VoiceBiometricEngine(context: Context) : AutoCloseable {
      * Range: -1.0 to 1.0 (Higher is more similar)
      */
     fun calculateIdentityScore(vec1: FloatArray, vec2: FloatArray): Float {
-        if (vec1.size != vec2.size || vec1.isEmpty()) return 0.0f
+        if (vec1.isEmpty() || vec2.isEmpty()) return 0.0f
+        val minLen = minOf(vec1.size, vec2.size)
+        if (minLen == 0) return 0.0f
 
         var dotProduct = 0.0f
         var normA = 0.0f
         var normB = 0.0f
 
-        for (i in vec1.indices) {
+        for (i in 0 until minLen) {
             dotProduct += vec1[i] * vec2[i]
             normA += vec1[i] * vec1[i]
             normB += vec2[i] * vec2[i]

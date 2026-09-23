@@ -30,11 +30,11 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.3")
     implementation("com.zaxxer:HikariCP:5.1.0")
     
+    implementation(libs.h2)
     testImplementation(libs.ktor.server.tests)
     testImplementation(libs.ktor.client.negotiation)
     testImplementation(kotlin("test"))
     testImplementation(libs.junit)
-    testImplementation(libs.h2)
 }
 
 application {

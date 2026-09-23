@@ -84,3 +84,22 @@ data class UpdateVoiceProfileRequest(
 data class FirebaseAuthRequest(
     val idToken: String
 )
+
+@Serializable
+data class VaultItem(
+    val id: String,
+    val name: String,
+    val embedding: String,
+    val wps: Float,
+    val pitch: Float
+)
+
+@Serializable
+data class VaultSaveRequest(
+    val ownerId: String,
+    val contactId: String,
+    val name: String,
+    val embedding: String,
+    val wps: Float,
+    val pitch: Float
+)

@@ -30,17 +30,33 @@ object DatabaseFactory {
             dataSource = ds
             val database = Database.connect(ds)
             transaction(database) {
-                SchemaUtils.createMissingTablesAndColumns(Users, Contacts, Messages, Transcripts)
+                SchemaUtils.createMissingTablesAndColumns(Users, Contacts, Messages, Transcripts, VoiceVault)
+            }
+            return
+        }
+
+        // 1. Check for environment variable. If missing, use local H2 for development.
+        val rawUrl = System.getenv("JDBC_DATABASE_URL")
+        
+        if (rawUrl == null) {
+            println("JDBC_DATABASE_URL not found. Falling back to local H2 database...")
+            val config = HikariConfig().apply {
+                this.driverClassName = "org.h2.Driver"
+                this.jdbcUrl = "jdbc:h2:file:./data/anticlone_db;DB_CLOSE_DELAY=-1;MODE=PostgreSQL"
+                maximumPoolSize = 3
+                isAutoCommit = false
+            }
+            val ds = HikariDataSource(config)
+            dataSource = ds
+            val database = Database.connect(ds)
+            transaction(database) {
+                SchemaUtils.createMissingTablesAndColumns(Users, Contacts, Messages, Transcripts, VoiceVault)
             }
             return
         }
 
         val driverClassName = "org.postgresql.Driver"
-        
-        // 1. Use the direct Supabase host as default if the pooler is unreachable/unresolvable
-        val rawUrl = System.getenv("JDBC_DATABASE_URL") 
-            ?: "postgresql://db.dzpkgschzppvjonksvww.supabase.co:5432/postgres"
-        
+
         // 2. Parse credentials and host from the URL if it's in the format postgresql://user:pass@host:port/db
         var user = System.getenv("JDBC_DATABASE_USER") ?: "postgres"
         var password = System.getenv("JDBC_DATABASE_PASSWORD") ?: "01ZA92YB34CD"
@@ -74,7 +90,7 @@ object DatabaseFactory {
         val database = Database.connect(ds)
         
         transaction(database) {
-            SchemaUtils.createMissingTablesAndColumns(Users, Contacts, Messages, Transcripts)
+            SchemaUtils.createMissingTablesAndColumns(Users, Contacts, Messages, Transcripts, VoiceVault)
         }
     }
 

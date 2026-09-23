@@ -62,6 +62,8 @@ class VoiceGuardDetector {
         val rms = sqrt(squaredSum / shorts.size)
 
         if (rms < MIN_RMS) {
+            smoothedRisk *= 0.8f
+            if (smoothedRisk < 0.1f) smoothedRisk = 0.0f
             val inferenceTime = (System.nanoTime() - startTime) / 1000000
             return DetectionResult(
                 riskScore = smoothedRisk,

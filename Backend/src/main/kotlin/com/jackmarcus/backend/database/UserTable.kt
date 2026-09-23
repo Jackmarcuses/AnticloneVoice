@@ -21,3 +21,14 @@ object Contacts : Table("contacts") {
 
     override val primaryKey = PrimaryKey(userId, contactId)
 }
+
+object VoiceVault : Table("voice_vault") {
+    val ownerId = varchar("owner_id", 128)
+    val contactId = varchar("contact_id", 128)
+    val name = varchar("name", 128)
+    val embedding = text("embedding")
+    val wps = float("wps").default(0.0f)
+    val pitch = float("pitch").default(0.0f)
+
+    override val primaryKey = PrimaryKey(ownerId, contactId)
+}

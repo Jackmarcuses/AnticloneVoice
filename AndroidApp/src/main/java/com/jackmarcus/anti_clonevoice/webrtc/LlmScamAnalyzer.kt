@@ -34,13 +34,17 @@ class LlmScamAnalyzer(private val context: Context) {
         // 1. Detect Language Dynamically
         languageIdentifier.identifyLanguage(paragraph)
             .addOnSuccessListener { languageCode ->
-                _detectedLanguage.value = when (languageCode) {
-                    "hi" -> "Hindi"
-                    "en" -> "English"
-                    "und" -> "Unknown"
+                val hasHindi = paragraph.any { it.code in 0x0900..0x097F }
+                val hasEnglish = paragraph.any { it in 'a'..'z' || it in 'A'..'Z' }
+                
+                _detectedLanguage.value = when {
+                    hasHindi && hasEnglish -> "Hinglish"
+                    languageCode == "hi" -> "Hindi"
+                    languageCode == "en" -> "English"
+                    languageCode == "und" -> if (hasHindi) "Hindi" else "Unknown"
                     else -> languageCode.uppercase()
                 }
-                Log.d(TAG, "Detected Language: $languageCode")
+                Log.d(TAG, "Detected Language: ${_detectedLanguage.value} (Code: $languageCode)")
             }
             .addOnFailureListener {
                 Log.e(TAG, "Language detection failed: ${it.message}")

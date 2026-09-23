@@ -10,14 +10,19 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import okhttp3.*
-import java.util.Timer
-import java.util.TimerTask
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 class SignalingClient(
     private val okHttpClient: OkHttpClient
 ) {
     private var webSocket: WebSocket? = null
+    private var currentUserId: String? = null
     private val TAG = "SignalingClient"
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     
     private val _signalingMessages = MutableSharedFlow<SignalingMessage>(
         extraBufferCapacity = 10,
@@ -26,6 +31,11 @@ class SignalingClient(
     val signalingMessages: SharedFlow<SignalingMessage> = _signalingMessages.asSharedFlow()
 
     fun connect(userId: String) {
+        if (webSocket != null && currentUserId == userId) {
+            Log.d(TAG, "Signaling WebSocket already connected/connecting for $userId")
+            return
+        }
+        currentUserId = userId
         val url = "${Config.WS_URL}/api/v1/call/signal/$userId"
         Log.d(TAG, "Connecting to signaling WS: $url")
         
@@ -35,7 +45,7 @@ class SignalingClient(
         
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "Signaling WebSocket Opened")
+                Log.i(TAG, "Signaling WebSocket Opened for $userId")
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -50,22 +60,24 @@ class SignalingClient(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.w(TAG, "Signaling WebSocket Closed: $reason")
-                // Aggressive reconnect after 2 seconds
-                Timer().schedule(object : TimerTask() {
-                    override fun run() {
+                this@SignalingClient.webSocket = null
+                scope.launch {
+                    delay(2000)
+                    if (currentUserId == userId) {
                         connect(userId)
                     }
-                }, 2000)
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e(TAG, "Signaling WebSocket Failure: ${t.message}")
-                // Aggressive reconnect after 2 seconds
-                Timer().schedule(object : TimerTask() {
-                    override fun run() {
+                this@SignalingClient.webSocket = null
+                scope.launch {
+                    delay(2000)
+                    if (currentUserId == userId) {
                         connect(userId)
                     }
-                }, 2000)
+                }
             }
         })
     }
@@ -79,5 +91,6 @@ class SignalingClient(
     fun disconnect() {
         webSocket?.close(1000, "Call ended")
         webSocket = null
+        currentUserId = null
     }
 }

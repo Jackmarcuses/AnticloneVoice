@@ -74,6 +74,29 @@ fun Application.configureRouting() {
             call.respond(AuthResponse(token, user.id))
         }
 
+        // Voice Vault API for AI Server
+        post("/api/v1/vault/save") {
+            val request = call.receive<VaultSaveRequest>()
+            if (UserDatabase.saveToVault(
+                request.ownerId, 
+                request.contactId, 
+                request.name, 
+                request.embedding, 
+                request.wps, 
+                request.pitch
+            )) {
+                call.respond(HttpStatusCode.OK, MessageResponse("Saved to vault"))
+            } else {
+                call.respond(HttpStatusCode.InternalServerError, MessageResponse("Failed to save"))
+            }
+        }
+
+        get("/api/v1/vault/list") {
+            val ownerId = call.request.queryParameters["ownerId"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+            val vault = UserDatabase.getVault(ownerId)
+            call.respond(vault)
+        }
+
         post("/api/v1/auth/firebase") {
             val request = call.receive<FirebaseAuthRequest>()
             val firebaseUid = verifyFirebaseToken(request.idToken)

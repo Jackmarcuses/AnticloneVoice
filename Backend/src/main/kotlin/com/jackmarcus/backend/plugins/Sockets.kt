@@ -59,7 +59,7 @@ fun Application.configureSockets() {
             } catch (e: Exception) {
                 println("Presence connection lost for $userId: ${e.message}")
             } finally {
-                presenceSessions.remove(userId)
+                presenceSessions.remove(userId, this)
                 UserDatabase.setUserOffline(userId)
                 // Broadcast "offline" to contacts
                 broadcastPresence(userId, "offline")
@@ -102,7 +102,7 @@ fun Application.configureSockets() {
                 println("Error in Signaling for $userId: ${e.message}")
             } finally {
                 println("User $userId disconnected from Signaling")
-                signalingSessions.remove(userId)
+                signalingSessions.remove(userId, this)
             }
         }
 
@@ -130,7 +130,7 @@ fun Application.configureSockets() {
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
-                chatSessions.remove(userId)
+                chatSessions.remove(userId, this)
             }
         }
     }
